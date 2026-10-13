@@ -10,7 +10,7 @@ Source of truth for the plan is `docs/implementation-plan.md`. This file records
 | Security investigation | **Done 2026-10-13/14** — see "Security investigation" below. Decisions logged. |
 | M1 Shell | **Done 2026-10-14** — see "M1" below |
 | M2 PDF reading (+ §5.1.1 gates 1–2) | **Done 2026-10-14** — gates 1 and 2 hold; see "M2" below |
-| M3 Selection → action (+ gate 3) | Pending |
+| M3 Selection → action (+ gate 3) | **Done 2026-10-14** — gate 3 holds; see "M3" below |
 | M0b Hardened fork | Pending — runs **after M3's gates clear**, before M4 |
 | M4 Embedded search panel (+ GPU spike) | Pending |
 | M5 Polish | Pending |
@@ -474,3 +474,83 @@ was amended (the original `(\w)-\s+(\w)` rule would also have produced "preand p
 - **Release build** (`flutter build linux --release`, no CEF yet): succeeds in 38 s, 30 MB bundle; the
   dev driver's command strings (`scanhyphen`, `dragchars`, `clickpill`, `colbreak`) are **absent** from
   the release `libapp.so` (checked with `strings`).
+
+---
+
+## M3 — Selection → action (§5.1.1 gate 3 first) (2026-10-14, branch `feat/m3-selection-action`)
+
+### Gate 3 — selection → screen coordinates under scroll and zoom (observed)
+**Method.** The anchor is computed by `selectionAnchors()` (`lib/features/reader/selection_anchor.dart`)
+from pdfrx's public API only: `textSelectionPointRange` → `PdfPageText.charRects[index]` (PDF page
+coordinates) → `PdfViewerController.calcRectForRectInsidePage` (document coordinates) →
+`documentToLocal`. It was **not** checked against itself: for each case a frame *without* the selection
+and a frame *with* it were captured and diffed; the bounding box of the changed pixels is the highlight pdfrx
+actually drew, compared with the predicted rectangle (window logical px; capture ratio 1.0).
+
+| Case | Zoom | Scroll / action | err (left, top, right, bottom), px |
+|---|---|---|---|
+| prose, word | 0.90 (fit) | 0 | +1.1, 0.0, +0.1, −2.5 |
+| prose, word | 1.73 | 0 / 150 / 400 | +1.0, +0.3…0.7, −0.4, −3.7…−4.4 |
+| prose, word | 3.0 | 0 / 100 | +0.3, +0.3, −0.6, −7.5 |
+| prose, 3-word phrase | 1.73 | 0 / 150 | −0.1…+0.9, +0.3…+0.4, −0.4, +0.2…+0.3 |
+| **selection held, then scrolled** (prose) | 1.73 | +120, +120, −200 | +1.0…+2.0, +0.2…+0.9, −0.4, −3.7…−4.2 |
+| **selection held, then zoomed** (prose) | 1.73→3.46→1.73→0.90 | zoom in / out / fit | +0.9…+1.1, ≤0.4, ≤0.2, −2.5…−8.8 |
+| two-column, phrase | 1.20 / 1.73 / 0.87 | scroll +100, zoom in, zoom out | ≤ +1.0, ≤ +0.9, ≤ −0.4, ≤ −0.5 |
+| multi-line (prose, 3 lines) | 1.73 | — | bbox.top − start.top = +0.1; bbox.bottom − end.bottom = +0.3; bbox.left − start.left = −0.1 |
+| multi-line (technical code block) | 1.5 | — | +0.1 / −0.1 / −0.2 |
+| real LaTeX spec PDF, multi-line | 1.74 | 0 / 200 | top +0.3…+0.8, bottom −3.2…−3.8 (left/right differ: middle lines extend beyond the end characters, as expected) |
+
+**Reading.** Left/top/right agree within ~1–2 px at every zoom (0.87–3.46) and scroll offset tried,
+including with the selection held while scrolling or zooming. The *bottom* is 2–9 px lower than the
+highlight because `charRects` is the glyph box (descender included) and pdfrx paints a shorter band — the
+safe direction for placing something *under* the text. Multi-line: the highlight's top/bottom equal the start
+character's top and the end character's bottom, so anchoring on the end character is right.
+**Gate 3 holds; no fallback to hand-rolled transforms was needed.**
+
+*Not covered:* rotated pages, pages with different sizes in one document, cropped/offset media boxes,
+a selection whose end is on a different page and off-screen (the pill falls back to the start anchor, then
+hides — tested with fake anchors, not with a real document), and zoom values the viewer clamps (the spec PDF
+silently clamped requested zooms to 1.74).
+
+### What was built
+- `selection_anchor.dart` (above), `pill_placement.dart` (pure: below by default, flip above the selection top,
+  clamp inside the viewport, report the degenerate overlap case), `selection_action_controller.dart` (debounced
+  120 ms; reads the text once; `normalizeQuery`; no searchable text ⇒ no action; `dismiss`, `reset`; stale reads
+  cannot overwrite newer selections), `selection_pill.dart` (the action; hit-test transparent outside itself;
+  follows the viewer controller).
+- Wiring in `ReaderScreen`: pill over the viewer, `Ctrl+E`, `Esc` (hides the pill **and** clears the
+  selection), reset on document change. The action is a **stub** until M4: it logs the built URL
+  (`https://www.google.com/search?q=…`) and shows a transient message; nothing is navigated.
+
+### Verified in the running app (real pointer drags; key events via Flutter's focus pipeline)
+- Pill appears below the end of the selection, centred on the last character, 8 px gap (pill top 383.75 vs
+  end-char bottom 376; centre 506 vs 506).
+- Scrolling by wheel **with the cursor exactly over the pill**: the document scrolls and the pill moves with
+  the text (−52 px both). *Before the fix it did not scroll at all* (see below).
+- Real pointer click on the pill: stub fired (`[find-meaning] …?q=fibrosis`), snackbar shown, **selection and
+  pill unchanged** — §5.1.1 gate 2 re-confirmed with the real pill stacked over the viewer.
+- `Ctrl+E` → handled, stub fired; `Esc` → handled, pill gone, selection cleared.
+- Flip: for a selection on the first line of the next paragraph, the pill sat above it (704 vs selection top 712).
+- 53 automated tests pass (placement, controller debounce/stale/dismiss/reset, pill widget geometry and
+  hit-testing, shortcut wiring).
+
+### Bugs found by driving the real app (fixed)
+1. **Wheel over the pill was swallowed.** The pill is above the viewer in hit-test order, so scroll signals
+   landing on it never reached pdfrx. Fixed by forwarding them to `PdfViewerController.handlePointerSignalEvent`;
+   regression test added.
+2. **Re-opening the same file left the controller detached** (same `ValueKey` ⇒ the old viewer state was reused
+   with a new controller: zoom buttons and page indicator dead). Fixed with a per-open serial in the key.
+
+### Deviations / decisions
+- Pill icon is **search**, not `✦` (sparkle reads as AI; the README promises no AI answer). Plan §5.1 amended.
+- Pill height 44 (plan: ≥48 dp for touch; desktop pointer only here).
+- The pill is *not* shown when neither end of the selection is on screen; `Ctrl+E` still works then.
+
+### Not verified / open
+- Tab-key reachability of the pill (InkWell is focusable by default; not exercised).
+- Touch handles/magnifier and ≥48 dp targets (mobile, M7).
+- Right-click on a selection (pdfrx's own secondary-tap behaviour) was not exercised.
+- Real OS-level key delivery (GTK → engine): the key tests inject at the framework level because the engine's
+  `KeyData` path waits for a legacy raw-key message only a real embedder sends. The engine→framework hop for
+  keys is therefore unverified (the owner's hands-on use covers it).
+- The dev harness's pointer events are Flutter-level, as in M2.

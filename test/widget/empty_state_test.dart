@@ -2,6 +2,7 @@ import 'package:dndreader/app.dart';
 import 'package:dndreader/features/reader/empty_state.dart';
 import 'package:dndreader/features/reader/open_failure.dart';
 import 'package:dndreader/features/reader/reader_screen.dart';
+import 'package:dndreader/features/reader/selection_action_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -107,4 +108,62 @@ void main() {
     await tester.pumpWidget(const DndReaderApp());
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('Ctrl+E runs Find meaning for the held query; Esc dismisses it', (
+    tester,
+  ) async {
+    final action = _ReadyAction('idiopathic pulmonary fibrosis');
+    await tester.pumpWidget(
+      MaterialApp(home: ReaderScreen(actionController: action)),
+    );
+    expect(action.available, isTrue);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(
+      find.text('Find meaning: idiopathic pulmonary fibrosis'),
+      findsOneWidget,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(action.available, isFalse);
+  });
+
+  testWidgets('Ctrl+E does nothing without a searchable selection', (
+    tester,
+  ) async {
+    final action = SelectionActionController();
+    await tester.pumpWidget(
+      MaterialApp(home: ReaderScreen(actionController: action)),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(find.textContaining('Find meaning:'), findsNothing);
+  });
+}
+
+/// A controller that is already "settled" on a query.
+class _ReadyAction extends SelectionActionController {
+  _ReadyAction(this._fixed);
+
+  final String _fixed;
+  bool _hidden = false;
+
+  @override
+  String? get query => _fixed;
+
+  @override
+  bool get available => !_hidden;
+
+  @override
+  void dismiss() {
+    _hidden = true;
+    notifyListeners();
+  }
 }

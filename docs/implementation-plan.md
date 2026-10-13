@@ -267,8 +267,11 @@ anchoring. `PdfPageText` exposes `fullText`, `charRects`, `pageNumber`.
 - Flip above/below and clamp horizontally so the pill is never off-viewport, and never let it
   overlap the selection rectangle.
 - The pill must not steal the selection: no focus grab, hit-testing only on the pill itself.
-- Desktop: compact pill, `✦ Find meaning`, with a `Ctrl+E` hint. Touch: same action at the
-  selection-toolbar position above the handles, ≥48 dp target.
+- Desktop: compact pill, `Find meaning` with a `Ctrl+E` hint (a **search** icon, not `✦`: a
+  sparkle reads as "AI" in current UI conventions and this product promises no AI answer). Touch:
+  same action at the selection-toolbar position above the handles, ≥48 dp target.
+- Wheel/trackpad signals that land on the pill are forwarded to the viewer, otherwise the document
+  stops scrolling while the cursor rests on the pill (found in M3).
 - Keyboard: `Ctrl/Cmd+E` triggers, `Esc` closes the panel, `Tab` reaches the pill.
 
 #### 5.1.1 pdfrx verification gate — do this in M2/M3 *before* polishing the action UI
