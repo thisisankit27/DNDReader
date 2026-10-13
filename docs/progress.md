@@ -6,8 +6,19 @@ Source of truth for the plan is `docs/implementation-plan.md`. This file records
 | Milestone | Status |
 |---|---|
 | P0 Planning | Done (`da3813a`) |
-| **M0 Feasibility spike** | **Executed 2026-10-13 — see below. Checks 1, 2, 5, 7 observed; 3 and 4 have evidence but the judgement is the user's; 6 partly observed (no interstitial appeared).** |
-| M1 onward | Not started |
+| M0 Feasibility spike | **Done 2026-10-13** — see below. Checks 1, 2, 5, 7 observed; 3 and 4 have evidence but the judgement is the owner's; 6 partly observed (no interstitial appeared). |
+| Security investigation | **Done 2026-10-13/14** — see "Security investigation" below. Decisions logged. |
+| M1 Shell | Pending |
+| M2 PDF reading (+ §5.1.1 gates 1–2) | Pending |
+| M3 Selection → action (+ gate 3) | Pending |
+| M0b Hardened fork | Pending — runs **after M3's gates clear**, before M4 |
+| M4 Embedded search panel (+ GPU spike) | Pending |
+| M5 Polish | Pending |
+| M6 Tests, packaging, docs | Pending |
+
+**Order (amended 2026-10-14): M1 → M2 → M3 → M0b → M4 → M5 → M6.** The hardened fork is not a
+dependency of the shell, reader or selection action, while §5.1.1 gate 3 is the last existential
+unknown; the native-fork effort waits until the gates clear.
 
 ---
 
@@ -108,7 +119,7 @@ width. Frames: `07_panel_420`, `01_initial_450px`, `08_panel_480`. The panel was
 event with delta 500 moved the page from the AI Overview to People-also-ask and the first organic
 results (frame `04`); Google's search bar stayed pinned. I did **not** measure frame rate or latency
 and cannot judge smoothness from still frames. The user should scroll the window by hand.
-README states Linux uses the software path; I did not verify which path ran.
+README states Linux uses the software path. *(Superseded: verified during the security investigation — the browser command line carries `--disable-gpu --disable-gpu-compositing`, so the software path is in use; see below.)*
 
 **5. Navigation — observed.**
 - Click on first organic result → navigated *in the same panel* to
@@ -144,7 +155,7 @@ the plan is not what that parameter does. CEF's default UA is already Chrome-149
 
 ### Findings beyond the seven checks
 
-1. **Persistent profile at `~/.config/cef_user_data/`** (114 MB after a few minutes) — contradicting my
+1. **Persistent profile at `~/.config/cef_user_data/`** *(0.6.2 only: upstream `main` can relocate it — see "Security investigation")* (114 MB after a few minutes) — contradicting my
    prior reading of the source, which predicted an in-memory profile. Contains `Default/Cookies`,
    Local Storage, Preferences, and `SingletonLock/SingletonCookie/SingletonSocket`. The plugin exposes no
    way to set `root_cache_path` (CEF logs: "Please customize CefSettings.root_cache_path … default may
@@ -208,7 +219,7 @@ running window (earlier run) corroborates the display output for check 1/2/7.
 - Frame-rate / latency measurement for scrolling.
 - A run with a different network, region, or VPN; consent-wall behaviour is therefore **unobserved**, not "passed".
 - Two simultaneous app instances / singleton behaviour.
-- Verifying whether CEF used its software or GPU path.
+- Verifying whether CEF used its software or GPU path. *(Done later — verified software; see "Security investigation".)*
 
 ### Recommendation
 
@@ -228,3 +239,116 @@ Decisions that are the user's, surfaced rather than made:
 
 Start M1 (`flutter create` in the repo, pinned deps, shell). Run the app from a normal terminal, not
 the VS Code snap terminal. Keep `flutter analyze`/`dart format` on from the first commit.
+
+---
+
+## Security investigation (2026-10-13/14)
+
+Question: the plugin ships Chromium with protections off — what should DNDReader do before M1?
+**[V]** = read from source/docs or observed this session; **[H]** = hypothesis, not yet tested.
+All experiments ran in `~/scratch` against a patched *copy* of upstream `main`; the repository and
+`~/.pub-cache` were not modified.
+
+### What the plugin does
+- **[V]** `common/webview_app.cc` (`OnBeforeCommandLineProcessing`, browser process, unconditional, no
+  Dart opt-out): `disable-web-security` (l.116), `allow-running-insecure-content` (l.117),
+  `no-sandbox` (l.120), `disable-features=SameSiteByDefaultCookies,CookiesWithoutSameSiteMustBeSecure`
+  (l.139–153, in a block commented `//Support cross domain requests`).
+- **[V]** The sandbox is disabled in a **second** place: `cefs.no_sandbox = true`
+  (`common/webview_plugin.cc:701`). The `no-sandbox` switch was misspelled `no-sanbox` until June 2026,
+  so `CefSettings.no_sandbox` was the only effective disable for years.
+- **[V]** Conditional on a non-empty filter domain, hence inactive: `ignore-certificate-errors`,
+  `unsafely-treat-insecure-origin-as-secure`. Also forced: `--process-per-site
+  --renderer-process-limit=8`, `--autoplay-policy=no-user-gesture-required`.
+- **[V]** Rationale: none documented. The flags arrived in a squash commit (#118, 2024-05-10) whose
+  message does not mention them. The maintainer's own comment (issue #110): the setting "can ignore all
+  browser security settings, but be careful to only load pages that you fully trust … another way which
+  more securely is set white list, but we have not finish the api yet". README (eLinux section): the
+  sandbox is disabled "to avoid SUID permission issues common on embedded filesystems". These are
+  convenience defaults for integrators loading their own content, not requirements of offscreen rendering.
+- **[V]** The plugin's CMake has `SET_LINUX_SUID_PERMISSIONS(...)` **commented out**
+  (`linux/CMakeLists.txt:116`); CEF's own samples run `chown root:root && chmod 4755` on
+  `chrome-sandbox`. The helper setup was never wired up.
+
+### Versions
+- **[V]** pub.dev latest is 0.6.2 (2026-08-25) with **no** root-cache-path option and no flag opt-out.
+- **[V]** Upstream `main` `bb2dbcc` (2026-09-18, PR #224) adds `initialize(rootCachePath: …)`. Its
+  `webview_app.cc` is byte-identical to 0.6.2 — **main still forces every flag**. Same CEF
+  (149.0.4+g2f1bfd8). Tested: profile lands at the custom path; default dir untouched.
+
+### Sandbox behaviour (the decisive question)
+| Launch context | Observed |
+|---|---|
+| From the VS Code snap shell (AppArmor label `snap.code.code (complain)`), sandbox on | **[V]** Works; Google renders. Renderers: seccomp-BPF (`Seccomp: 2`), `NoNewPrivs`, own user/pid/net namespaces. The 0644 `chrome-sandbox` was not used. ⇒ the sandbox is **compatible with offscreen rendering**. |
+| **Unconfined** (`systemd-run --user`), sandbox on | **[V]** Aborts at startup (SIGTRAP, ~2 s): `FATAL setuid_sandbox_host.cc:166 The SUID sandbox helper binary was found, but is not configured correctly … lib/chrome-sandbox is owned by root and has mode 4755`. |
+- **[V]** `kernel.apparmor_restrict_unprivileged_userns = 1`, `…_unconfined = 1`; Ubuntu's
+  `unprivileged_userns` profile does `audit deny capability`; Ubuntu ships `userns` profiles for
+  Chrome/Chromium/Signal/Slack/VS Code (`/etc/apparmor.d/`). Syntax of the candidate profile produced no
+  diagnostics from `apparmor_parser -Q -K` (weak: the pipeline hid the exit status).
+- **[H]** The restriction is why the namespace route fails when unconfined.
+- **[V]** Chromium's own docs: the SUID sandbox is "almost but not completely removed… page is mostly
+  out-of-date".
+- **Not tested:** the SUID route and the AppArmor-profile success path (both need root).
+
+### Flag removal (one query, one machine)
+- **[V]** Removing web-security + insecure-content; removing the SameSite entry; removing all three
+  (sandbox still off): Google results rendered identically in each. Cookies' SameSite behaviour under
+  the changed defaults was not examined beyond page load.
+
+### Navigation veto prototype (deferred product decision — not built)
+- **[V]** No navigation callback exists in the Dart API; `WebviewHandler` implements no
+  `CefRequestHandler`, so a veto needs a native patch. CEF 149's `OnBeforeBrowse` can cancel before commit.
+- **[V]** Observed with a logging prototype: a result click is **two hops** — `google.com/goto?url=…`
+  (main frame, allowed) then a **redirect** (`redirect=1`) to the external site. `target=_blank` /
+  `window.open` reach the same hook via `OnBeforePopup` → `loadUrl`. **Sub-frames** also hit the hook (a
+  naive allow-list vetoed Google's own `ep2.adtrafficquality.google` iframe), so any veto must be
+  main-frame-only. User-gesture information is lost on popups.
+
+### Profile and persistence
+- **[V]** `~/.config/cef_user_data` (114 MB): mostly installation data (component cache, Widevine,
+  TTS/suggestion models); per-profile data under `Default/` (Cookies, Local Storage, Session Storage,
+  History, IndexedDB, …) plus `Singleton*` lock files. Cookie hosts seen: google.com, youtube.com,
+  nih.gov, nhlbi.nih.gov, 122.2o7.net.
+- **[V]** The plugin offers per-cookie `deleteCookie(domain,key)` only — no clear-all, no cache clear.
+- **[V]** CEF's header says an empty `cache_path` means in-memory "incognito" mode, yet this build
+  persisted anyway. A request context created with an empty `cache_path` persisted **0 cookies, no Local
+  Storage origins, no Session Storage** while Google loaded normally; the control persisted 5 cookies.
+  **[H]** holds across restarts and CEF versions.
+- Installation-specific data (≈2.3 MB, 38 entries) still lands in `root_cache_path`.
+
+### Rendering path
+- **[V]** `WEBVIEW_CEF_GPU_TEXTURE` is defined only on Windows/macOS; Linux uses
+  `FlPixelBufferTexture` (CPU buffer) and the command line carries `--disable-gpu
+  --disable-gpu-compositing`. `SetEnableGPU()` exists with **no caller**. CEF 149 exposes
+  `OnAcceleratedPaint` (dmabuf planes) on Linux, but consuming it needs a custom `FlTextureGL` +
+  EGLImage import in Flutter's Linux embedder — out of scope.
+- **[V]** `xclip` is invoked via `system()` for paste.
+
+### Decisions (owner, 2026-10-14)
+1. **B is the security fix; A (navigation veto) is a deferred product choice.** Once the sandbox and
+   web security are on, third-party pages sit at roughly a normal browser's posture.
+2. **Pinned public fork** `thisisankit27/webview_cef` at upstream `bb2dbcc`; remove the three
+   convenience flags first; in-memory context by default; sandbox on and **fail closed**.
+3. **AppArmor `userns` profile, not SUID** (idiomatic on Ubuntu 26.04, what Chrome ships). Consequence:
+   AppImage unsupported on Ubuntu ≥ 24.04.
+4. **Navigation policy follows the security state:** sandbox active ⇒ in-panel click-through; unavailable
+   ⇒ "Open in browser".
+5. **Consent:** one long-lived webview + shared request context ⇒ consent at most once per launch;
+   URL-only detection + hint; persistence opt-in deferred (fork keeps an optional cache path). Not
+   observable on this network ⇒ **unverified**.
+6. **GPU:** time-boxed spike after M4 (frames/s + CPU, GPU off vs on, sandbox on, local page); scroll
+   *feel* remains the owner's judgement.
+7. **Resequenced:** M1 → M2 → M3 → **M0b** → M4 → M5 → M6.
+
+### Environment notes (learned the hard way)
+- Launching from the VS Code *snap* terminal inherits snap GTK/GSettings variables (GTK apps abort:
+  `GLib-GIO-ERROR … 'antialiasing'`) **and** the `snap.code.code (complain)` AppArmor label, which makes a
+  sandbox test pass when a normal launch would not. Use `systemd-run --user` (unconfined) or `env -i`.
+- `pkill -f` matches the invoking shell; use `pkill -x`.
+- XTest under XWayland does not reach the app; external window capture of a GL window is unreliable.
+  The spike used in-app frame capture and in-Flutter pointer injection.
+
+### Still unverified
+SUID route (not shipped); AppArmor success path (needs the owner's `sudo`); in-memory context across
+restarts; EEA/UK consent behaviour; flag removal beyond one query/one machine; GPU benefit; probe/CEF
+agreement (to be tested in M0b); Chromium cadence is policy, not measurement.

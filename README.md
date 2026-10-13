@@ -15,9 +15,10 @@ No AI engine of our own. No API keys. No accounts. No backend.
 
 ## Status
 
-**Planning complete; no application code exists yet.** The implementation plan is in
-[docs/implementation-plan.md](docs/implementation-plan.md), and the next step is the embedded-search
-feasibility spike described in its §2.
+**In development; no released app.** The embedded-search feasibility spike (M0) and a security
+investigation are done, and implementation is under way on the `feat/mvp-reader` branch. The plan is
+in [docs/implementation-plan.md](docs/implementation-plan.md); what has actually been observed is in
+[docs/progress.md](docs/progress.md). Ubuntu is the only target of the first MVP.
 
 | Platform | State |
 |---|---|
@@ -35,7 +36,7 @@ verified on that platform.
 |---|---|
 | Framework | Flutter 3.47.7 / Dart 3.13.5 — one codebase for all five platforms |
 | PDF rendering + text selection | [`pdfrx`](https://pub.dev/packages/pdfrx) (PDFium) |
-| Search panel, desktop | [`webview_cef`](https://pub.dev/packages/webview_cef) (CEF), docked into the layout |
+| Search panel, desktop | a pinned, security-hardened fork of [`webview_cef`](https://pub.dev/packages/webview_cef) (CEF), docked into the layout |
 | Search panel, mobile | [`webview_flutter`](https://pub.dev/packages/webview_flutter) |
 | Preferences | `shared_preferences` |
 
@@ -87,6 +88,7 @@ the file manager, or from a terminal with `dndreader path/to/file.pdf`.
 - Only your preferences and the paths of recently opened documents are stored locally.
 
 Loading Google Search in the panel involves Google's own cookies, exactly as it would in a browser.
+The panel's cookies and storage are held **in memory only** and discarded when DNDReader quits.
 
 ## Known limitations
 
@@ -96,8 +98,9 @@ Loading Google Search in the panel involves Google's own cookies, exactly as it 
 3. **Consent screens, and occasionally a CAPTCHA, may appear** in the panel — more likely on shared
    or VPN connections. They can be dealt with in place, as in any browser.
 4. **The panel needs a network connection.** Reading PDFs works offline.
-5. **The desktop build is large** (~150–250 MB) because CEF bundles Chromium, and CEF uses a
-   software rendering path on Linux, so panel scrolling may feel less smooth than a real browser.
+5. **The desktop build is large** (~150–250 MB estimated) because CEF bundles Chromium. On Linux CEF
+   uses a **software** rendering path (verified), so panel scrolling may feel less smooth than a real
+   browser; GPU compositing is still being evaluated.
 6. **Text-based PDFs only.** Scanned pages have no text layer and nothing to select. No OCR.
 7. **Ubuntu is the only platform the MVP will verify.** The other four are untested.
 8. **An unresolved policy question.** DNDReader performs no scraping, parsing or automation — it
@@ -108,6 +111,17 @@ Loading Google Search in the panel involves Google's own cookies, exactly as it 
    arrangement. Nothing here concludes that personal, open-source or commercial use is exempt. If
    you intend to distribute DNDReader, resolve this yourself — with legal advice if it matters to
    you. Google may also change embedded-webview behaviour at any time without notice.
+
+9. **The embedded browser runs sandboxed, or not at all.** The Chromium sandbox is required. If it
+   cannot start, the panel is disabled and results open in your system browser. On Ubuntu 24.04 and
+   later it needs an AppArmor profile that the `.deb` installs, so an **AppImage is not supported**
+   there.
+10. **Shipping Chromium makes security updates this project's job.** DNDReader pins a specific CEF
+    (Chromium) build; a bare `.deb` has **no automatic update channel**, so fixes reach you only when
+    you install a newer package.
+11. **Consent screens may reappear once per launch**, because search cookies are not persisted.
+    Behaviour behind an EEA/UK consent wall is **unverified** — none appeared in testing.
+12. **`xclip` is needed to paste** into the panel (the plugin shells out to it).
 
 ## Not included
 
