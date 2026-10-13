@@ -51,6 +51,58 @@ void main() {
       expect(normalizeQuery('über-\nsetzung'), 'übersetzung');
     });
 
+    // Strings below are exactly what pdfrx returned in M2 (gate 1) for the
+    // generated fixtures; see docs/progress.md.
+    test('PDFium joins an ASCII-hyphen wrap as U+0002: "well\u0002known"', () {
+      expect(
+        normalizeQuery('a well\u0002known "quoted phrase" \u2014 set off'),
+        'a wellknown "quoted phrase" \u2014 set off',
+      );
+    });
+
+    test(
+      'a U+2010 hyphen at a line end is joined: "silico\u2010\nvolcano"',
+      () {
+        expect(
+          normalizeQuery(
+            'pneumonoultramicroscopicsilico\u2010\nvolcanoconiosis is',
+          ),
+          'pneumonoultramicroscopicsilicovolcanoconiosis is',
+        );
+      },
+    );
+
+    test('soft hyphens are removed', () {
+      expect(
+        normalizeQuery('pneumono\u00ADultra\u00ADmicroscopic'),
+        'pneumonoultramicroscopic',
+      );
+    });
+
+    test('superscripts that arrive on their own line read naturally', () {
+      expect(
+        normalizeQuery('Let x\n2 + y\n2 = z\n2 hold [12].'),
+        'Let x 2 + y 2 = z 2 hold [12].',
+      );
+    });
+
+    test('stray control characters never reach the URL', () {
+      final uri = searchUriFor('a\u0001b\u0002c\u0007d')!;
+      expect(uri.toString(), isNot(contains('%01')));
+      expect(uri.toString(), isNot(contains('%02')));
+      expect(uri.toString(), isNot(contains('%07')));
+      expect(uri.queryParameters['q'], 'a bc d');
+    });
+
+    test('page-spanning selections keep their text', () {
+      expect(
+        normalizeQuery(
+          'errors themselves.\n3Shared MIME-info Database\n2.2. The source XML files',
+        ),
+        'errors themselves. 3Shared MIME-info Database 2.2. The source XML files',
+      );
+    });
+
     test('empty and whitespace-only selections are rejected', () {
       expect(normalizeQuery(''), isNull);
       expect(normalizeQuery('   \n\t  '), isNull);
