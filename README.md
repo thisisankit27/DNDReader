@@ -36,7 +36,7 @@ verified on that platform.
 |---|---|
 | Framework | Flutter 3.47.7 / Dart 3.13.5 — one codebase for all five platforms |
 | PDF rendering + text selection | [`pdfrx`](https://pub.dev/packages/pdfrx) (PDFium) |
-| Search panel, desktop | a pinned, security-hardened fork of [`webview_cef`](https://pub.dev/packages/webview_cef) (CEF) — [`thisisankit27/webview_cef`](https://github.com/thisisankit27/webview_cef) @ `fe58efa` (see its `HARDENING.md`) — docked into the layout |
+| Search panel, desktop | a pinned, security-hardened fork of [`webview_cef`](https://pub.dev/packages/webview_cef) (CEF) — [`thisisankit27/webview_cef`](https://github.com/thisisankit27/webview_cef) @ `0970b44` (see its `HARDENING.md`) — docked into the layout |
 | Search panel, mobile | [`webview_flutter`](https://pub.dev/packages/webview_flutter) |
 | Preferences | `shared_preferences` |
 
@@ -98,9 +98,11 @@ The panel's cookies and storage are held **in memory only** and discarded when D
 3. **Consent screens, and occasionally a CAPTCHA, may appear** in the panel — more likely on shared
    or VPN connections. They can be dealt with in place, as in any browser.
 4. **The panel needs a network connection.** Reading PDFs works offline.
-5. **The desktop build is large** (~150–250 MB estimated) because CEF bundles Chromium. On Linux CEF
-   uses a **software** rendering path (verified), so panel scrolling may feel less smooth than a real
-   browser; GPU compositing is still being evaluated.
+5. **The desktop build is large** (~1.5 GB uncompressed for a release bundle; a package has not been built yet)
+   because CEF bundles Chromium. On Linux CEF uses a **software** rendering path by default (verified), so panel
+   scrolling may feel less smooth than a real browser. GPU compositing is an explicit, off-by-default opt-in
+   (`DNDREADER_GPU=1`): it is smoother in a scripted-scroll test, but the GPU process then runs without its
+   seccomp filter.
 6. **Text-based PDFs only.** Scanned pages have no text layer and nothing to select. No OCR.
 7. **Ubuntu is the only platform the MVP will verify.** The other four are untested.
 8. **An unresolved policy question.** DNDReader performs no scraping, parsing or automation — it

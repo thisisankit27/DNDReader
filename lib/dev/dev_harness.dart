@@ -7,11 +7,13 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import '../features/reader/selection_anchor.dart';
 import '../features/reader/selection_pill.dart';
+import '../features/search/search_session.dart';
 import 'selection_debug.dart';
 
 /// Path of a one-line command file polled by [DevHarness]. Empty disables it.
@@ -29,12 +31,14 @@ class DevHarness extends StatefulWidget {
     required this.controller,
     required this.openPath,
     required this.selection,
+    this.search,
     required this.child,
   });
 
   final PdfViewerController? controller;
   final void Function(String path) openPath;
   final PdfTextSelection? Function() selection;
+  final SearchSession? search;
   final Widget child;
 
   static bool get enabled => !kReleaseMode && _commandFile.isNotEmpty;
@@ -512,6 +516,55 @@ class _DevHarnessState extends State<DevHarness> {
         for (final c in chain) {
           _log('    $c');
         }
+      case 'searchurl': // searchurl <url> — drive the panel directly (error-state tests)
+        final session = widget.search;
+        if (session == null) throw StateError('no search session');
+        await session.search(Uri.parse(a[1]), 'dev test');
+      case 'searchstate':
+        final session = widget.search;
+        if (session == null) throw StateError('no search session');
+        _log(
+          '  SEARCH ${json.encode({'phase': session.phase.name, 'visible': session.visible, 'url': session.currentUrl, 'canGoBack': session.canGoBack, 'consentHint': session.consentHint, 'reason': session.unavailableReason})}',
+        );
+      case 'searchback':
+        await widget.search?.back();
+      case 'searchclose':
+        widget.search?.close();
+      case 'bench': // bench <x> <y> <dy> <count> <intervalMs> — scripted scroll + Flutter frame timings
+        final x = double.parse(a[1]), y = double.parse(a[2]);
+        final dy = double.parse(a[3]);
+        final count = int.parse(a[4]), interval = int.parse(a[5]);
+        final timings = <FrameTiming>[];
+        void collect(List<FrameTiming> t) => timings.addAll(t);
+        SchedulerBinding.instance.addTimingsCallback(collect);
+        final sw = Stopwatch()..start();
+        for (var i = 0; i < count; i++) {
+          _inject(
+            (v) => PointerScrollEvent(
+              position: Offset(x, y),
+              scrollDelta: Offset(0, dy),
+              kind: PointerDeviceKind.mouse,
+              device: 7,
+              viewId: v,
+            ),
+          );
+          await Future<void>.delayed(Duration(milliseconds: interval));
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        sw.stop();
+        SchedulerBinding.instance.removeTimingsCallback(collect);
+        double ms(Duration d) => d.inMicroseconds / 1000.0;
+        final total = timings.map((t) => ms(t.totalSpan)).toList()..sort();
+        final build = timings.map((t) => ms(t.buildDuration)).toList();
+        final raster = timings.map((t) => ms(t.rasterDuration)).toList();
+        double avg(List<double> l) =>
+            l.isEmpty ? 0 : l.reduce((p, e) => p + e) / l.length;
+        double pct(List<double> l, double p) =>
+            l.isEmpty ? 0 : l[((l.length - 1) * p).round()];
+        String f(double v) => v.toStringAsFixed(2);
+        _log(
+          '  BENCH ${json.encode({'wallMs': sw.elapsedMilliseconds, 'frames': timings.length, 'framesPerSec': (timings.length * 1000 / sw.elapsedMilliseconds).toStringAsFixed(1), 'buildAvgMs': f(avg(build)), 'rasterAvgMs': f(avg(raster)), 'totalP50Ms': f(pct(total, 0.5)), 'totalP90Ms': f(pct(total, 0.9)), 'totalMaxMs': f(total.isEmpty ? 0 : total.last)})}',
+        );
       case 'viewport':
         final c = _need();
         _log(

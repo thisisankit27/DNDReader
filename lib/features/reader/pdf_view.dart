@@ -14,6 +14,7 @@ class PdfView extends StatelessWidget {
     this.onViewerReady,
     this.onLoadFailed,
     this.onTextSelectionChange,
+    this.onDocumentTap,
   });
 
   final String path;
@@ -22,6 +23,9 @@ class PdfView extends StatelessWidget {
   final void Function(PdfDocument document)? onViewerReady;
   final VoidCallback? onLoadFailed;
   final PdfViewerTextSelectionChangeCallback? onTextSelectionChange;
+
+  /// A plain tap on the document (not a drag/selection).
+  final VoidCallback? onDocumentTap;
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +41,12 @@ class PdfView extends StatelessWidget {
           showContextMenuAutomatically: false,
           onTextSelectionChange: onTextSelectionChange,
         ),
+        onGeneralTap: (context, controller, details) {
+          if (details.type == PdfViewerGeneralTapType.tap) {
+            onDocumentTap?.call();
+          }
+          return false; // never swallow the tap: selection handling continues
+        },
         onPageChanged: onPageChanged,
         onViewerReady: (document, _) => onViewerReady?.call(document),
         onDocumentLoadFinished: (ref, succeeded) {

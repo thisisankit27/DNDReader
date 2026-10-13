@@ -12,7 +12,7 @@ Source of truth for the plan is `docs/implementation-plan.md`. This file records
 | M2 PDF reading (+ §5.1.1 gates 1–2) | **Done 2026-10-14** — gates 1 and 2 hold; see "M2" below |
 | M3 Selection → action (+ gate 3) | **Done 2026-10-14** — gate 3 holds; see "M3" below |
 | M0b Hardened fork | **Built and verified except the profile success path (needs the owner's `sudo`)** — see "M0b" below |
-| M4 Embedded search panel (+ GPU spike) | Pending |
+| M4 Embedded search panel (+ GPU spike) | **Done 2026-10-14** — see "M4" below |
 | M5 Polish | Pending |
 | M6 Tests, packaging, docs | Pending |
 
@@ -561,7 +561,7 @@ silently clamped requested zooms to 1.74).
 
 ### Pin
 - Fork: <https://github.com/thisisankit27/webview_cef> (public, Apache-2.0), branch `dndreader/hardened`.
-- **Pinned commit: `fe58efaaf6e9c80983fd68874985937dcae66633`** (2 commits on upstream `bb2dbcc`; 10 files, +369/−19).
+- **Pinned commit: `0970b4447cb667dc4a512ba5350a39a253d6d273`** (4 commits on upstream `bb2dbcc`; 11 files, +415/−34; the first two were M0b, the last two came from M4: `onLoadError`, and removal of the helper it orphaned). *M0b originally pinned `fe58efa`; M4 re-pinned.*
 - `HARDENING.md` in the fork lists every change and serves as the Apache-2.0 §4(b) modified-files notice.
   No upstream PR was opened.
 - Local working copy: `~/scratch/upstream/webview_cef` (remote `fork`). `~/scratch/plugin/wcef_exp` (the
@@ -626,3 +626,94 @@ Expected: the app starts normally (it needs the M4 panel to show a webview; unti
 - Windows/macOS: untouched sandbox setting; the three flag removals have not been exercised there.
 - The release build ignoring the unsandboxed dev override is an *app-level* check, done in M4.
 - Probe false negatives (probe passes, CEF fails) — none seen; not provable from two contexts.
+
+---
+
+## M4 — Embedded search panel on the hardened fork (2026-10-14, branch `feat/m4-search-panel`)
+
+### Built
+- `lib/features/search/`: `SearchWebView` (the platform seam; desktop = CEF fork, others are an
+  always-unavailable stand-in until M7), `CefSearchWebView`, `SearchSession` (state machine), `SearchPanel`.
+- Panel overlays the right edge (420–480 px, `widthFor`), **one long-lived browser** shared by all searches,
+  closing hides it (`Offstage`), header = Back · query (2 lines) · Open in browser · Close.
+- States: starting/loading (progress bar), loaded, **failed** (Retry + Open in browser; 20 s timeout; no raw
+  error text), **unavailable** (sandbox cannot start: explanation + Open in browser), **consent hint** (URL host
+  only), and a loud red banner when the **development override** is active.
+- Navigation policy follows the security state: sandbox active ⇒ in-panel click-through + Back; unavailable ⇒
+  the panel is never created.
+- `Esc` closes the panel first, then dismisses the selection; a plain tap on the document closes the panel.
+- App pins the fork by SHA (`pubspec.yaml`); an untracked `pubspec_overrides.yaml` points local builds at
+  `~/scratch/upstream/webview_cef` (which symlinks the single shared CEF tree). **Both resolution paths were
+  exercised** (override, and the pure git pin from GitHub).
+- `flutter create`-style runner changes from the plugin's CMake step are committed
+  (`linux/runner/main.cc` +5, `my_application.cc` +3, plugin registrant files).
+
+### Verified in the running app (Ubuntu 26.04; driven with Flutter-level pointer/key injection)
+| Check | Observed |
+|---|---|
+| Unconfined launch, sandbox required (default) | panel opens in the **unavailable** state; reason shown; app alive; **0 CEF processes**; document untouched |
+| Same build, snap-shell context (sandbox can start) | Google results render in the panel; renderers sandboxed |
+| Opening the panel | document `visibleRect` **identical** before/with panel (no reflow, no scroll change) |
+| Wheel scroll inside the panel | works (frame `m4_panel_scrolled`) |
+| Click a result | navigates **in the panel** (pmc.ncbi.nlm.nih.gov); Back becomes enabled |
+| Back | returns to the Google results; **stays loaded** (checked again 23 s later) |
+| Close (✕) / reopen (`Ctrl+E`) | panel hides; document viewport unchanged; reopen reuses the same browser |
+| `Esc` ×2 | first closes the panel (selection kept), second dismisses the selection |
+| Tap on document text | closes the panel |
+| Unresolvable host | **failed** state: "Couldn’t load results", Retry, Open in browser; no raw error |
+| Dev override (unconfined, `DNDREADER_ALLOW_UNSANDBOXED_DEV=1`, debug build) | loads; banner visible; `--no-sandbox` in 7/7 children |
+| Same build, no override, unconfined | fails closed (0 CEF processes) |
+| **Release build** | override lookup **compiled out**: the variable name appears **0×** in `libapp.so`, `dndreader`, `libwebview_cef_plugin.so` (control: present in the debug kernel); dev-driver strings also absent; pure-function tests for `releaseMode: true` |
+
+85 automated tests pass (session state machine incl. the observed CEF event orders, panel states, shortcut
+wiring, placement, dev-override rules). `flutter analyze` clean.
+
+### Bugs found by driving the real app (all fixed)
+1. **False "failed" after Back.** CEF sends `loadEnd` for the restored page and *then* an address change for the
+   same page; the session treated that as a new navigation, restarted loading, and no second `loadEnd` ever
+   came ⇒ the 20 s timeout flipped a working page to "failed". A URL report for the page already loaded is now
+   not a navigation. Regression tests encode the observed order.
+2. **Raw error page.** The plugin rendered load failures as a `data:text/html` "Failed to load URL … with error
+   ERR_NAME_NOT_RESOLVED (-105)" page (cefclient sample code), which my `chrome-error://` check never saw. Fixed
+   in the **fork**: main-frame failures are reported via `onLoadError`; no page is rendered.
+3. **Same-page URL rewrites counted as history.** Google appends `&sei=…` after load; that is now the same
+   history entry (otherwise Back looked enabled when there was nowhere to go).
+4. **`-Werror`:** removing the data-URI page orphaned a helper; removed it.
+
+### GPU compositing spike (time-boxed; resolution 2 in the plan)
+Same scripted scroll (60 wheel events × 120 units, 40 ms apart) of a local 630 kB page I authored (cards with
+shadows, gradients, a transform; **not Google**), sandbox required, snap-shell context, page reloaded per run,
+CEF `OnPaint` callbacks counted natively by a throw-away patch (not committed; the fork tree was reverted).
+First attempt using Flutter `FrameTiming` was discarded: the callback delivered 0 frames in one config.
+
+| Config | OnPaint/s during scroll (valid runs) | CPU ticks per 3.1 s run | GPU-process sandbox |
+|---|---|---|---|
+| GPU off (default) | 38, 42, 41 | ≈ 700–780 | seccomp **2** |
+| GPU on (`DNDREADER_GPU=1`) | 56, 61, 60 | ≈ 600–670 | seccomp **0** |
+
+- **Result:** GPU on delivered ≈ 50 % more frames at ≈ 10–15 % less CPU in this test. Run 1 of each config was a
+  warm-up with no samples and is excluded; three runs per config, one machine, one page.
+- **Cost:** with the GPU on, the GPU process has **no seccomp filter** (it shares the browser's user/pid/net
+  namespaces in *both* configs). Renderers — the processes that handle untrusted pages — are fully sandboxed
+  (seccomp 2, own namespaces) either way.
+- **Decision:** GPU stays **off by default** (the approved criteria were performance-only; this security cost
+  was discovered during the spike, so the choice is surfaced rather than made silently). It is an explicit
+  opt-in: `DNDREADER_GPU=1`, honoured in every build. **Scroll feel remains the owner's judgement** (M0 check 4):
+  M6 will hand over a release build and both configurations.
+- Zero-copy (`OnAcceleratedPaint`/dmabuf) remains out of scope.
+
+### Consent
+URL-only detection is implemented and unit-tested (host `consent.google.com` / `consent.youtube.com`).
+**Not observed live:** no consent interstitial appeared on this network, so the panel-level hint was verified
+with fakes only, and in-memory behaviour behind an EEA/UK consent wall is **unverified**. I did not try
+Google's public consent URL: reaching it from here would not reproduce a regional wall and I preferred not to
+drive Google's consent UI to manufacture evidence.
+
+### Not verified / open
+- The **success path of the AppArmor profile** (an unconfined launch with a *real* sandbox) — awaiting the
+  owner's `sudo` (see M0b). All sandbox-active evidence above comes from the snap-shell (`complain`) context.
+- Right-click inside the panel, text input in Google's search box (IME, paste needs `xclip`), downloads, and
+  popups opened by *real* result pages (popups were verified against a local page in M0).
+- Keyboard focus moving between the document and the panel (Tab order).
+- Behaviour with two app windows (singleton lock) and across a crash.
+- The unsandboxed override is exercised only via the harness; no user-facing setting exists, by design.

@@ -69,7 +69,7 @@ One platform seam is accepted, deliberately and in one place: the **webview host
 
 - Desktop (Linux/Windows/macOS): **a pinned, security-hardened fork of `webview_cef`**
   (`github.com/thisisankit27/webview_cef`, branch `dndreader/hardened`, pinned by commit SHA —
-  **`fe58efaaf6e9c80983fd68874985937dcae66633`**), based on upstream `main` at
+  **`0970b4447cb667dc4a512ba5350a39a253d6d273`**), based on upstream `main` at
   `bb2dbcc` (2026-09-18). CEF 149; renders into a Flutter `Texture` so web content composes with the
   Flutter UI. **M0 exercised this**: it builds on Ubuntu 26.04 and Google Search is usable in a
   420–480 px panel (`docs/progress.md`).
@@ -182,7 +182,7 @@ dependencies:
   webview_cef:
     git:
       url: https://github.com/thisisankit27/webview_cef
-      ref: fe58efaaf6e9c80983fd68874985937dcae66633   # never a branch name
+      ref: 0970b4447cb667dc4a512ba5350a39a253d6d273   # never a branch name
 ```
 
 For local development, an untracked `pubspec_overrides.yaml` may point at a local checkout whose
@@ -388,7 +388,7 @@ fork work waits until the gates clear — and then lands before anything that ne
   script (root ⇒ the owner runs it). Evidence: flags absent from the browser `cmdline`, fail-closed
   behaviour exercised, profile success-path pending the owner's `sudo`. Navigation veto is **not**
   built (deferred product decision).
-- **M4 — Embedded search panel (on the hardened fork).** Docked panel, URL building,
+- **M4 — Embedded search panel (on the hardened fork). *Done; see progress.md.*** Docked panel, URL building,
   loading/error/retry, Back, Open-in-browser, Close restoring scroll position; sandbox-unavailable
   and consent-hint states (§6). **Then a time-boxed GPU-compositing spike** (frames/s and CPU,
   GPU off vs on, sandbox on, against a locally authored long page — not Google).
@@ -548,12 +548,14 @@ hardware), Android (until M7), and `integration_test` (best-effort on Linux desk
 3. **Consent screens and, rarely, a CAPTCHA may appear** in the panel, especially on shared or VPN
    IPs. They are solvable in place, like in any browser.
 4. **Network required** for the panel. The reader itself works offline.
-5. **Large desktop bundle** (~150–250 MB estimated; a release build has not been measured — the
-   debug bundle was 1.8 GB) because CEF ships Chromium. **Linux uses CEF's software rendering path —
-   verified in M0** (`--disable-gpu --disable-gpu-compositing` observed on the browser command line;
-   frames reach Flutter as CPU pixel buffers), so panel scrolling may be less smooth than a real
-   browser. GPU compositing is evaluated in a spike after M4; its outcome is recorded in
-   `docs/progress.md`. Whether scrolling *feels* acceptable is the owner's judgement, not a measurement.
+5. **Large desktop bundle** (a release bundle with CEF is **~1.5 GB uncompressed**; a `.deb` has not been
+   built yet, so its size is unknown — the earlier ~150–250 MB estimate was not measured) because CEF ships
+   Chromium. **Linux uses CEF's software rendering path by default — verified in M0/M4**
+   (`--disable-gpu --disable-gpu-compositing` observed in the child processes; frames reach Flutter as CPU
+   pixel buffers). In a scripted-scroll benchmark the software path delivered ≈ 40 frames/s versus ≈ 60 with
+   GPU compositing enabled, so scrolling may feel less smooth than a real browser. GPU compositing is
+   available as an **explicit opt-in** (`DNDREADER_GPU=1`) and is **off by default** because with it the GPU
+   process runs without its seccomp filter. Whether scrolling *feels* acceptable is the owner's judgement.
 6. **Text-based PDFs only.** Scanned pages have no text layer — show "This page has no selectable
    text" rather than failing silently. No OCR.
 7. **Ubuntu is the only verified platform in the MVP.** The other four are architecturally

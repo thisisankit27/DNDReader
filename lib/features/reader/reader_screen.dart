@@ -14,6 +14,8 @@ import 'reader_header.dart';
 import 'selection_action_controller.dart';
 import 'selection_anchor.dart';
 import 'selection_pill.dart';
+import '../search/search_panel.dart';
+import '../search/search_session.dart';
 import '../../services/search_url.dart';
 
 /// The single screen: header on top, reading surface below.
@@ -23,6 +25,7 @@ class ReaderScreen extends StatefulWidget {
     this.initialPath,
     this.pickPdf = pickPdfPath,
     this.actionController,
+    this.searchSession,
   });
 
   /// A document to open at start-up (command-line argument / "Open With").
@@ -35,6 +38,10 @@ class ReaderScreen extends StatefulWidget {
   /// native PDF viewer. Production code leaves this null.
   @visibleForTesting
   final SelectionActionController? actionController;
+
+  /// Test seam for the search session (a fake web view). Null in production.
+  @visibleForTesting
+  final SearchSession? searchSession;
 
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
@@ -55,6 +62,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final SelectionDebugState _debug = SelectionDebugState();
   late final SelectionActionController _action =
       widget.actionController ?? SelectionActionController();
+  late final SearchSession _search = widget.searchSession ?? SearchSession();
 
   @override
   void initState() {
@@ -66,6 +74,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void dispose() {
     if (widget.actionController == null) _action.dispose();
+    if (widget.searchSession == null) _search.dispose();
     super.dispose();
   }
 
@@ -99,22 +108,25 @@ class _ReaderScreenState extends State<ReaderScreen> {
     });
     _debug.reset();
     _action.reset();
+    _search.close();
   }
 
-  /// "Find meaning". Until the search panel exists (M4) this hands the built
-  /// URL to a transient message; nothing is navigated.
+  /// "Find meaning": builds the search URL for the held query and opens the panel.
   void _findMeaning() {
     if (!_action.available) return;
-    final uri = searchUriFor(_action.query!);
+    final query = _action.query!;
+    final uri = searchUriFor(query);
     if (uri == null) return;
-    debugPrint('[find-meaning] ${uri.toString()}');
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('Find meaning: ${_action.query}')));
+    _search.search(uri, query);
   }
 
-  /// Esc: hide the action and drop the selection.
-  void _dismissSelection() {
+  /// Esc: close the search panel if it is open; otherwise hide the action and
+  /// drop the selection.
+  void _escape() {
+    if (_search.visible) {
+      _search.close();
+      return;
+    }
     _action.dismiss();
     if (_controller.isReady) {
       _controller.textSelectionDelegate.clearTextSelection();
@@ -139,6 +151,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
         onViewerReady: (document) =>
             setState(() => _pageCount = document.pages.length),
         onLoadFailed: () => setState(() => _failed = true),
+        onDocumentTap: _search.close,
         onTextSelectionChange: (selection) {
           _selection = selection;
           _debug.onSelectionChanged(selection);
@@ -153,7 +166,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
             _openPicker,
         const SingleActivator(LogicalKeyboardKey.keyE, control: true):
             _findMeaning,
-        const SingleActivator(LogicalKeyboardKey.escape): _dismissSelection,
+        const SingleActivator(LogicalKeyboardKey.escape): _escape,
       },
       child: Focus(
         autofocus: true,
@@ -176,6 +189,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   controller: hasDocument ? _controller : null,
                   openPath: _openPath,
                   selection: () => _selection,
+                  search: _search,
                   child: SelectionDebugOverlay(
                     state: _debug,
                     child: Stack(
@@ -206,6 +220,41 @@ class _ReaderScreenState extends State<ReaderScreen> {
                               },
                             ),
                           ),
+                        // The search panel overlays the right edge: the document
+                        // never reflows and never loses its scroll position.
+                        Positioned.fill(
+                          child: ListenableBuilder(
+                            listenable: _search,
+                            builder: (context, _) {
+                              // No browser exists until the first search.
+                              if (_search.webView == null && !_search.visible) {
+                                return const SizedBox.shrink();
+                              }
+                              return LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final width = SearchPanel.widthFor(
+                                    constraints.maxWidth,
+                                  );
+                                  return Align(
+                                    alignment: Alignment.centerRight,
+                                    child: SizedBox(
+                                      width: width,
+                                      // Offstage keeps the browser laid out (and
+                                      // alive) while the panel is closed.
+                                      child: Offstage(
+                                        offstage: !_search.visible,
+                                        child: SearchPanel(
+                                          session: _search,
+                                          onClose: _search.close,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
                       ],
                     ),
                   ),
