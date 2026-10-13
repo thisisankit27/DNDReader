@@ -11,7 +11,7 @@ Source of truth for the plan is `docs/implementation-plan.md`. This file records
 | M1 Shell | **Done 2026-10-14** — see "M1" below |
 | M2 PDF reading (+ §5.1.1 gates 1–2) | **Done 2026-10-14** — gates 1 and 2 hold; see "M2" below |
 | M3 Selection → action (+ gate 3) | **Done 2026-10-14** — gate 3 holds; see "M3" below |
-| M0b Hardened fork | Pending — runs **after M3's gates clear**, before M4 |
+| M0b Hardened fork | **Built and verified except the profile success path (needs the owner's `sudo`)** — see "M0b" below |
 | M4 Embedded search panel (+ GPU spike) | Pending |
 | M5 Polish | Pending |
 | M6 Tests, packaging, docs | Pending |
@@ -554,3 +554,75 @@ silently clamped requested zooms to 1.74).
   `KeyData` path waits for a legacy raw-key message only a real embedder sends. The engine→framework hop for
   keys is therefore unverified (the owner's hands-on use covers it).
 - The dev harness's pointer events are Flutter-level, as in M2.
+
+---
+
+## M0b — Hardened fork (2026-10-14, branch `feat/m0b-hardened-fork`)
+
+### Pin
+- Fork: <https://github.com/thisisankit27/webview_cef> (public, Apache-2.0), branch `dndreader/hardened`.
+- **Pinned commit: `fe58efaaf6e9c80983fd68874985937dcae66633`** (2 commits on upstream `bb2dbcc`; 10 files, +369/−19).
+- `HARDENING.md` in the fork lists every change and serves as the Apache-2.0 §4(b) modified-files notice.
+  No upstream PR was opened.
+- Local working copy: `~/scratch/upstream/webview_cef` (remote `fork`). `~/scratch/plugin/wcef_exp` (the
+  experiment basis, env-var switches) is preserved but is **not** what is pinned.
+
+### What the patch does
+Removes `--disable-web-security`, `--allow-running-insecure-content` and the SameSite `disable-features`
+entries; sandbox **on by default on Linux** (`--no-sandbox` and `CefSettings.no_sandbox` only when the
+embedder passes `WebviewSandboxMode.disabled`; Windows/macOS unchanged); a **native preflight** before
+`CefInitialize` (fork a throw-away child → `unshare(CLONE_NEWUSER)`, write setgroups/uid_map/gid_map,
+`unshare(CLONE_NEWPID|CLONE_NEWNET)`, `chroot("/proc/self/fdinfo")`) that returns
+`sandbox_unavailable: <reason>` and **does not start CEF** on failure; one shared **in-memory**
+`CefRequestContext` (optional `cachePath`); `enableGpu` wired to the existing `SetEnableGPU`. Dart:
+`initialize({sandbox, cachePath, enableGpu})`, `WebviewSandboxException`. 10 Dart unit tests pass (5 new).
+No navigation delegate (deferred).
+
+### Evidence (all run this session on Ubuntu 26.04; the throwaway spike app built against the fork)
+| # | Context | Settings | Observed |
+|---|---|---|---|
+| F1 | **unconfined** (`systemd-run --user`) | sandbox required (default) | `INIT FAILED (sandbox): … preflight stage 12`; app **stays alive**, **0 CEF child processes**, no profile directory created, no crash. **Fail-closed verified.** |
+| F2 | VS Code snap shell (`snap.code.code (complain)`) | sandbox required | preflight passes, Google loads; renderers `Seccomp: 2`, `NoNewPrivs: 1`, **own user namespace**; gpu-process `Seccomp: 2`. Child cmdlines: no `--no-sandbox`, no `--disable-web-security`, no `--allow-running-insecure-content`, no SameSite entry. |
+| F3 | unconfined | `sandbox: disabled` | Google loads; `--no-sandbox` present in 7/7 children (**positive control** for the cmdline method); the three other flags still absent. The escape hatch works. |
+| F5 | snap shell | sandbox required, `enableGpu: true` | loads and renders; `--disable-gpu*` absent from children; **gpu-process `Seccomp: 0`** (it was 2 with GPU disabled) |
+| F2/F3/F5 | — | in-memory default | after each run: **0 cookie rows, 0 Local-Storage origins** in the profile's `Default/`; nothing at `~/.config/cef_user_data` |
+
+- **Method note.** Switches appended in `OnBeforeCommandLineProcessing` are *not* in the browser's
+  `/proc/<pid>/cmdline`; they are visible in the **child** processes' command lines. The check was validated with
+  positive controls (`--no-sandbox` appears in children exactly when disabled; `--disable-gpu*` appear by default;
+  `--disable-features=…` is propagated, so "no SameSite entry" is meaningful).
+- **Probe vs CEF.** The time-boxed preflight agreed with CEF's real behaviour in **both** launch contexts
+  observed earlier (unconfined: CEF FATAL / probe fail; snap-complain: CEF starts / probe pass). **No fallback to the
+  `/proc/self/attr/current` check was needed**; the more authoritative probe ships. It is ~60 lines, async-signal-safe
+  in the child.
+- **GPU (input to the post-M4 spike):** enabling GPU worked, but weakens the GPU process's sandbox
+  (`Seccomp: 0` vs `2`). The software path is therefore also the *more sandboxed* configuration; GPU must earn its
+  place with a measured benefit.
+
+### AppArmor deliverables (root needed to *install*; nothing was installed)
+- `packaging/linux/apparmor/dndreader` — profile for `/usr/lib/dndreader/dndreader` (installed by the `.deb`, M6).
+- `packaging/linux/dev/install-dev-apparmor.sh [BUNDLE_DIR]` / `uninstall-dev-apparmor.sh` — **reviewable
+  root-only scripts**; refuse to run unprivileged (verified), validate the generated profile with
+  `apparmor_parser -Q -K` before touching `/etc`, refuse paths containing AppArmor pattern characters.
+- Syntax check proven able to fail (a deliberately bad profile exits 1; the real profiles exit 0). Earlier in the
+  project that check was weak (a pipe hid the exit code); this one uses the parser's own status.
+
+### OWNER ACTION (hard stop for one item; everything else continued)
+The **success path of the profile** — an *unconfined* launch starting with a real sandbox — needs root and has
+**not** been run. To test it:
+```
+cd ~/Desktop/Projects/SaaS/DNDReader && flutter build linux --release
+sudo packaging/linux/dev/install-dev-apparmor.sh        # review it first; undo with the uninstall script
+systemd-run --user --collect --unit=dndreader-check "$PWD/build/linux/x64/release/bundle/dndreader" test_fixtures/prose.pdf
+```
+Expected: the app starts normally (it needs the M4 panel to show a webview; until then use the spike), and
+`/proc/<renderer-pid>/status` shows `Seccomp: 2`. Not claimed done.
+
+### Not verified
+- The AppArmor profile success path (above); behaviour on other Ubuntu versions/distros; kernels with user
+  namespaces disabled (expected: same fail-closed path, not exercised).
+- In-memory behaviour **across restarts** was not separately tested (each run starts from an empty store by
+  construction); EEA/UK consent behaviour (not observable here).
+- Windows/macOS: untouched sandbox setting; the three flag removals have not been exercised there.
+- The release build ignoring the unsandboxed dev override is an *app-level* check, done in M4.
+- Probe false negatives (probe passes, CEF fails) — none seen; not provable from two contexts.

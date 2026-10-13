@@ -69,7 +69,7 @@ One platform seam is accepted, deliberately and in one place: the **webview host
 
 - Desktop (Linux/Windows/macOS): **a pinned, security-hardened fork of `webview_cef`**
   (`github.com/thisisankit27/webview_cef`, branch `dndreader/hardened`, pinned by commit SHA —
-  recorded below once M0b lands: **`<fork SHA: pending M0b>`**), based on upstream `main` at
+  **`fe58efaaf6e9c80983fd68874985937dcae66633`**), based on upstream `main` at
   `bb2dbcc` (2026-09-18). CEF 149; renders into a Flutter `Texture` so web content composes with the
   Flutter UI. **M0 exercised this**: it builds on Ubuntu 26.04 and Google Search is usable in a
   420–480 px panel (`docs/progress.md`).
@@ -182,7 +182,7 @@ dependencies:
   webview_cef:
     git:
       url: https://github.com/thisisankit27/webview_cef
-      ref: <40-char commit SHA>        # never a branch name
+      ref: fe58efaaf6e9c80983fd68874985937dcae66633   # never a branch name
 ```
 
 For local development, an untracked `pubspec_overrides.yaml` may point at a local checkout whose
