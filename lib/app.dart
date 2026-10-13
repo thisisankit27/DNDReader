@@ -1,23 +1,41 @@
 import 'package:flutter/material.dart';
 
 import 'features/reader/reader_screen.dart';
+import 'services/settings_service.dart';
 import 'theme/app_theme.dart';
 
-/// Root widget: theme (follows the system light/dark setting) and the reader shell.
-class DndReaderApp extends StatelessWidget {
-  const DndReaderApp({super.key, this.initialPath});
+/// Root widget: theme (system / light / dark, remembered) and the reader shell.
+class DndReaderApp extends StatefulWidget {
+  const DndReaderApp({super.key, this.initialPath, this.settings});
 
   final String? initialPath;
 
+  /// Null in tests that don't care about persistence (an in-memory service is used).
+  final SettingsService? settings;
+
+  @override
+  State<DndReaderApp> createState() => _DndReaderAppState();
+}
+
+class _DndReaderAppState extends State<DndReaderApp> {
+  late final SettingsService _settings =
+      widget.settings ?? SettingsService.inMemory();
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'DNDReader',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
-      home: ReaderScreen(initialPath: initialPath),
+    return ListenableBuilder(
+      listenable: _settings,
+      builder: (context, _) => MaterialApp(
+        title: 'DNDReader',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        themeMode: _settings.settings.themeMode,
+        home: ReaderScreen(
+          initialPath: widget.initialPath,
+          settings: _settings,
+        ),
+      ),
     );
   }
 }

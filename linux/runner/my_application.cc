@@ -1,5 +1,7 @@
 #include "my_application.h"
 
+#include <stdio.h>
+
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
@@ -14,6 +16,56 @@ struct _MyApplication {
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
+
+// ---- Window size persistence -------------------------------------------------
+// The size is remembered in $XDG_CONFIG_HOME/dndreader/window-size ("W H").
+// Kept in the runner so no window-management package is needed.
+static const int kDefaultWidth = 1100;
+static const int kDefaultHeight = 760;
+static guint window_size_save_timer = 0;
+
+static gchar* window_size_path() {
+  return g_build_filename(g_get_user_config_dir(), "dndreader", "window-size",
+                          nullptr);
+}
+
+static void load_window_size(int* width, int* height) {
+  *width = kDefaultWidth;
+  *height = kDefaultHeight;
+  g_autofree gchar* path = window_size_path();
+  g_autofree gchar* contents = nullptr;
+  if (!g_file_get_contents(path, &contents, nullptr, nullptr)) return;
+  int w = 0, h = 0;
+  // Reject anything that is not two sane integers.
+  if (sscanf(contents, "%d %d", &w, &h) == 2 && w >= 480 && w <= 10000 &&
+      h >= 360 && h <= 10000) {
+    *width = w;
+    *height = h;
+  }
+}
+
+static gboolean save_window_size_cb(gpointer data) {
+  GtkWindow* window = GTK_WINDOW(data);
+  window_size_save_timer = 0;
+  if (gtk_window_is_maximized(window)) return G_SOURCE_REMOVE;
+  int w = 0, h = 0;
+  gtk_window_get_size(window, &w, &h);
+  if (w < 480 || h < 360) return G_SOURCE_REMOVE;
+  g_autofree gchar* path = window_size_path();
+  g_autofree gchar* dir = g_path_get_dirname(path);
+  g_mkdir_with_parents(dir, 0700);
+  g_autofree gchar* text = g_strdup_printf("%d %d\n", w, h);
+  g_file_set_contents(path, text, -1, nullptr);
+  return G_SOURCE_REMOVE;
+}
+
+static gboolean window_configure_cb(GtkWidget* widget, GdkEventConfigure*,
+                                    gpointer) {
+  // Debounce: a drag-resize fires many events.
+  if (window_size_save_timer != 0) g_source_remove(window_size_save_timer);
+  window_size_save_timer = g_timeout_add(500, save_window_size_cb, widget);
+  return FALSE;
+}
 
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
@@ -53,7 +105,11 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "DNDReader");
   }
 
-  gtk_window_set_default_size(window, 1100, 760);
+  int width = kDefaultWidth, height = kDefaultHeight;
+  load_window_size(&width, &height);
+  gtk_window_set_default_size(window, width, height);
+  g_signal_connect(window, "configure-event",
+                   G_CALLBACK(window_configure_cb), nullptr);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(

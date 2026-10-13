@@ -2,10 +2,19 @@ import 'package:flutter/material.dart';
 
 /// Shown when no document is open.
 class EmptyState extends StatelessWidget {
-  const EmptyState({super.key, this.onOpen});
+  const EmptyState({
+    super.key,
+    this.onOpen,
+    this.recents = const [],
+    this.onOpenRecent,
+  });
 
   /// Null disables the button (opening documents is not available yet).
   final VoidCallback? onOpen;
+
+  /// Recently opened documents (already filtered to those that exist).
+  final List<String> recents;
+  final ValueChanged<String>? onOpenRecent;
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +64,28 @@ class EmptyState extends StatelessWidget {
                   color: scheme.onSurfaceVariant,
                 ),
               ),
+              if (recents.isNotEmpty) ...[
+                const SizedBox(height: 28),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Recent', style: theme.textTheme.labelLarge),
+                ),
+                const SizedBox(height: 4),
+                for (final path in recents.take(5))
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: onOpenRecent == null
+                          ? null
+                          : () => onOpenRecent!(path),
+                      icon: const Icon(Icons.description_outlined, size: 18),
+                      label: Text(
+                        path.split('/').last,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+              ],
             ],
           ),
         ),
