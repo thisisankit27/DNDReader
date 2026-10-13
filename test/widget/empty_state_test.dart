@@ -3,9 +3,12 @@ import 'package:dndreader/features/reader/empty_state.dart';
 import 'package:dndreader/features/reader/open_failure.dart';
 import 'package:dndreader/features/reader/reader_screen.dart';
 import 'package:dndreader/features/reader/selection_action_controller.dart';
+import 'package:dndreader/features/search/search_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../search/fake_search_web_view.dart';
 
 void main() {
   testWidgets('shell shows the header and the empty state', (tester) async {
@@ -109,28 +112,46 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Ctrl+E runs Find meaning for the held query; Esc dismisses it', (
-    tester,
-  ) async {
-    final action = _ReadyAction('idiopathic pulmonary fibrosis');
-    await tester.pumpWidget(
-      MaterialApp(home: ReaderScreen(actionController: action)),
-    );
-    expect(action.available, isTrue);
+  testWidgets(
+    'Ctrl+E searches for the held query; Esc closes the panel, then dismisses',
+    (tester) async {
+      final action = _ReadyAction('idiopathic pulmonary fibrosis');
+      final view = FakeSearchWebView();
+      final search = SearchSession(webViewFactory: () => view);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReaderScreen(actionController: action, searchSession: search),
+        ),
+      );
+      expect(action.available, isTrue);
 
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
-    await tester.pump();
-    expect(
-      find.text('Find meaning: idiopathic pulmonary fibrosis'),
-      findsOneWidget,
-    );
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pump();
-    expect(action.available, isFalse);
-  });
+      expect(search.visible, isTrue);
+      expect(search.queryText, 'idiopathic pulmonary fibrosis');
+      expect(
+        view.started.single.toString(),
+        'https://www.google.com/search?q=idiopathic+pulmonary+fibrosis',
+      );
+
+      // First Esc closes the panel and leaves the selection action alone.
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(search.visible, isFalse);
+      expect(action.available, isTrue);
+
+      // Second Esc dismisses the action.
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(action.available, isFalse);
+
+      await tester.pumpWidget(const SizedBox());
+      search.dispose();
+    },
+  );
 
   testWidgets('Ctrl+E does nothing without a searchable selection', (
     tester,

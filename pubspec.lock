@@ -753,6 +753,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.2.0"
+  webview_cef:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: "0970b4447cb667dc4a512ba5350a39a253d6d273"
+      resolved-ref: "0970b4447cb667dc4a512ba5350a39a253d6d273"
+      url: "https://github.com/thisisankit27/webview_cef"
+    source: git
+    version: "0.6.2"
   win32:
     dependency: transitive
     description:

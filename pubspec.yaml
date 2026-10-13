@@ -34,6 +34,11 @@ dependencies:
   pdfrx: ^2.6.5
   shared_preferences: ^2.5.6
   url_launcher: ^6.3.3
+  # Pinned, security-hardened fork (see docs/implementation-plan.md §1, HARDENING.md in the fork).
+  webview_cef:
+    git:
+      url: https://github.com/thisisankit27/webview_cef
+      ref: 0970b4447cb667dc4a512ba5350a39a253d6d273
 
 
 dev_dependencies:
