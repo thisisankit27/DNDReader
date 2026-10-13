@@ -8,7 +8,7 @@ Source of truth for the plan is `docs/implementation-plan.md`. This file records
 | P0 Planning | Done (`da3813a`) |
 | M0 Feasibility spike | **Done 2026-10-13** — see below. Checks 1, 2, 5, 7 observed; 3 and 4 have evidence but the judgement is the owner's; 6 partly observed (no interstitial appeared). |
 | Security investigation | **Done 2026-10-13/14** — see "Security investigation" below. Decisions logged. |
-| M1 Shell | Pending |
+| M1 Shell | **Done 2026-10-14** — see "M1" below |
 | M2 PDF reading (+ §5.1.1 gates 1–2) | Pending |
 | M3 Selection → action (+ gate 3) | Pending |
 | M0b Hardened fork | Pending — runs **after M3's gates clear**, before M4 |
@@ -352,3 +352,42 @@ All experiments ran in `~/scratch` against a patched *copy* of upstream `main`; 
 SUID route (not shipped); AppArmor success path (needs the owner's `sudo`); in-memory context across
 restarts; EEA/UK consent behaviour; flag removal beyond one query/one machine; GPU benefit; probe/CEF
 agreement (to be tested in M0b); Chromium cadence is policy, not measurement.
+
+---
+
+## M1 — Shell runs on Ubuntu (2026-10-14, branch `feat/m1-shell`)
+
+**Built:** Flutter project at the repo root (`flutter create --platforms=linux`, app id
+`io.github.thisisankit27.dndreader`); pinned deps `pdfrx ^2.6.5`, `file_picker ^13.1.0`,
+`shared_preferences ^2.5.6`, `url_launcher ^6.3.3`, dev `flutter_lints ^6.0.0` + `integration_test`
+(`webview_cef` deliberately absent — it joins at M4 via the fork); Material 3 theme from one seed,
+light/dark following the system; one-row header (title, page n / N, zoom −/+, Open) that collapses to an
+icon button under 560 px; empty state; `Ctrl+O` binding (inert until M2); `lib/services/search_url.dart`
+implemented in full with tests; a debug-only frame-capture hook (`lib/dev/dev_capture.dart`, inert in
+release builds and without `--dart-define=DNDREADER_CAPTURE_DIR`); window title "DNDReader", 1100×760.
+
+**`flutter create` guard:** README.md, `docs/implementation-plan.md` and `docs/progress.md` were
+hash-checked before and after — **none were touched**. It only added new files: `.gitignore`,
+`.metadata`, `analysis_options.yaml`, `pubspec.yaml`, `lib/`, `linux/`, `test/` (and an ignored
+`.iml`). I then replaced its sample `test/widget_test.dart`, removed `cupertino_icons`, set the
+version to `0.1.0+1`, and let the Flutter tool add `build/**` and `linux/**` to the analyzer excludes.
+
+**Verified (run, this session):** `dart format --set-exit-if-changed .` clean; `flutter analyze` — no
+issues; `flutter test` — 22 passing (the §5.2 query table for `search_url`, plus shell/disabled-state/
+narrow-window widget tests); `flutter build linux --debug` succeeds (22 s incremental; first build
+pulled pdfium); the app launched unconfined via `systemd-run --user` and rendered the empty state in the
+system dark theme at the expected size (frame captured by the in-app hook).
+
+**Deviation from plan §5.2 (deliberate):** the plan's hyphen repair `(\w)-\s+(\w)` would also glue
+"pre- and post-operative" into "preand post-operative" — a common construction in medical text. The
+implementation repairs a hyphen only at a *line break* followed by a lowercase letter (Unicode-aware).
+Whether pdfrx actually delivers `\n` at wrapped lines is §5.1.1 gate 1; this rule is revisited with
+that observation.
+
+**Not verified / open:**
+- Light theme was not rendered (only the system's dark theme was exercised); widget tests ran with
+  the default theme.
+- Keyboard focus/Tab order and screen-reader semantics were set but not exercised.
+- `file_picker` on Linux shells out to `zenity`/`kdialog` — `zenity` exists on this machine; whether it
+  becomes a `Depends:` entry is decided at M2/M6 once the picker is exercised.
+- Open/zoom controls are intentionally disabled (no document yet).
