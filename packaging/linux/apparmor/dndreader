@@ -1,0 +1,21 @@
+# AppArmor profile for DNDReader (installed to /etc/apparmor.d/dndreader).
+#
+# This profile allows everything and exists only so the application is *named*
+# and may create unprivileged user namespaces. Ubuntu 24.04+ sets
+# kernel.apparmor_restrict_unprivileged_userns=1, which strips capabilities from
+# user namespaces created by unconfined programs; without `userns` here the
+# embedded browser's sandbox cannot start and DNDReader fails closed (the search
+# panel is disabled and results open in the system browser).
+#
+# Same shape as the profiles Ubuntu ships for Chrome, Chromium, Signal, Slack.
+
+abi <abi/5.0>,
+include <tunables/global>
+
+profile dndreader /usr/lib/dndreader/dndreader flags=(unconfined) {
+  userns,
+  @{exec_path} mr,
+
+  # Site-specific additions and overrides. See local/README for details.
+  include if exists <local/dndreader>
+}

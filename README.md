@@ -36,7 +36,7 @@ verified on that platform.
 |---|---|
 | Framework | Flutter 3.47.7 / Dart 3.13.5 — one codebase for all five platforms |
 | PDF rendering + text selection | [`pdfrx`](https://pub.dev/packages/pdfrx) (PDFium) |
-| Search panel, desktop | a pinned, security-hardened fork of [`webview_cef`](https://pub.dev/packages/webview_cef) (CEF), docked into the layout |
+| Search panel, desktop | a pinned, security-hardened fork of [`webview_cef`](https://pub.dev/packages/webview_cef) (CEF) — [`thisisankit27/webview_cef`](https://github.com/thisisankit27/webview_cef) @ `fe58efa` (see its `HARDENING.md`) — docked into the layout |
 | Search panel, mobile | [`webview_flutter`](https://pub.dev/packages/webview_flutter) |
 | Preferences | `shared_preferences` |
 
