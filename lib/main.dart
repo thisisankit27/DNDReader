@@ -4,9 +4,16 @@ import 'package:flutter/material.dart';
 
 import 'app.dart';
 import 'dev/dev_capture.dart';
+import 'services/settings_service.dart';
 
-void main(List<String> args) {
-  runApp(DevCapture(child: DndReaderApp(initialPath: _pdfFromArgs(args))));
+Future<void> main(List<String> args) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final settings = await SettingsService.load();
+  runApp(
+    DevCapture(
+      child: DndReaderApp(settings: settings, initialPath: _pdfFromArgs(args)),
+    ),
+  );
 }
 
 /// The first command-line argument that names an existing `.pdf` file

@@ -12,6 +12,9 @@ class ReaderHeader extends StatelessWidget {
     this.onOpen,
     this.onZoomIn,
     this.onZoomOut,
+    this.onToggleContents,
+    this.contentsOpen = false,
+    this.menu,
   });
 
   final String title;
@@ -21,6 +24,13 @@ class ReaderHeader extends StatelessWidget {
   final VoidCallback? onOpen;
   final VoidCallback? onZoomIn;
   final VoidCallback? onZoomOut;
+
+  /// Shows or hides the table of contents; null disables the button.
+  final VoidCallback? onToggleContents;
+  final bool contentsOpen;
+
+  /// Trailing overflow menu.
+  final Widget? menu;
 
   static const double height = 52;
 
@@ -46,6 +56,12 @@ class ReaderHeader extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Row(
                   children: [
+                    IconButton(
+                      tooltip: 'Contents (Ctrl+T)',
+                      isSelected: contentsOpen,
+                      icon: const Icon(Icons.toc),
+                      onPressed: hasDocument ? onToggleContents : null,
+                    ),
                     Expanded(
                       child: Semantics(
                         header: true,
@@ -92,6 +108,7 @@ class ReaderHeader extends StatelessWidget {
                         icon: const Icon(Icons.folder_open_outlined),
                         label: const Text('Open'),
                       ),
+                    if (menu != null) ...[const SizedBox(width: 2), menu!],
                   ],
                 ),
               );

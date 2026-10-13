@@ -13,7 +13,7 @@ Source of truth for the plan is `docs/implementation-plan.md`. This file records
 | M3 Selection → action (+ gate 3) | **Done 2026-10-14** — gate 3 holds; see "M3" below |
 | M0b Hardened fork | **Built and verified except the profile success path (needs the owner's `sudo`)** — see "M0b" below |
 | M4 Embedded search panel (+ GPU spike) | **Done 2026-10-14** — see "M4" below |
-| M5 Polish | Pending |
+| M5 Polish (+ table of contents) | **Done 2026-10-14** — see "M5" below |
 | M6 Tests, packaging, docs | Pending |
 
 **Order (amended 2026-10-14): M1 → M2 → M3 → M0b → M4 → M5 → M6.** The hardened fork is not a
@@ -717,3 +717,50 @@ drive Google's consent UI to manufacture evidence.
 - Keyboard focus moving between the document and the panel (Tab order).
 - Behaviour with two app windows (singleton lock) and across a crash.
 - The unsandboxed override is exercised only via the harness; no user-facing setting exists, by design.
+
+## M5 — Finish the experience (2026-10-14, branch `feat/m5-polish`)
+
+### Built
+- **Persistence** (`shared_preferences`, Linux: `$XDG_DATA_HOME/io.github.thisisankit27.dndreader/`): theme mode,
+  zoom, last document + page, recents (cap in `AppSettings.maxRecents`). Writes debounced 600 ms. Corrupt or
+  out-of-range values fall back to defaults (unit-tested).
+- **Window size** persisted by the GTK runner (`$XDG_CONFIG_HOME/dndreader/window-size`, debounced).
+- **Reopen last document** at start-up when no argv path is given and the file still exists.
+- **Menu**: open recent, theme (system/light/dark), keyboard shortcuts, About (app version + bundled Chromium).
+- **Table of contents** (owner request): the document's own outline, shown as a left-edge overlay (document
+  never reflows). Header button or `Ctrl+T`; `Esc` closes it (search panel takes priority). Nested entries with
+  page numbers, current page emphasised, entries without a destination are inert, "no table of contents"
+  state. Navigation uses `PdfViewerController.goToDest`.
+- Shortcuts: `Ctrl+O/E/T`, `Ctrl+= / Ctrl+−`, `Ctrl+0` (fit page), `Esc`.
+- New fixture `test_fixtures/outline.pdf` (nested headings, one chapter per page; Chrome `--generate-pdf-document-outline`).
+  The three older fixtures are unchanged (headless Chrome output is not byte-reproducible).
+
+### Verified (how)
+- `dart format --set-exit-if-changed .`, `flutter analyze`: clean. `flutter test`: **99 tests pass** (6 new for the
+  outline panel, settings-service tests).
+- In the running debug app (isolated `XDG_*`, unconfined launch via `systemd-run --user`, in-app capture):
+  - TOC from `outline.pdf` rendered with 3 chapters / 5 sections and correct page numbers (screenshot
+    `~/scratch/evidence/m5_toc_outline.png`, dark and light); clicking "Chapter Three" moved the viewer to page 3
+    (`viewport` → `page=3`).
+  - `technical.pdf` (no outline) shows the "no table of contents" state.
+  - Persistence across restart without argv: reopened `outline.pdf` at page **3**, zoom **3.459** (the saved
+    values), header label `3 / 3`.
+  - Window size: wrote `900 640`, restarted → view width 900.
+  - Light theme read from preferences and rendered.
+- Release build (`flutter build linux --release`) succeeds; the compiled `libapp.so` contains none of the dev
+  define names (`strings … | grep -c` → 0).
+
+### Bugs found and fixed
+- Opening a document via argv hung on the spinner after settings were wired in: `PdfViewer.file` created a new
+  document ref on every rebuild and stranded the in-flight load. The owner now holds one `PdfDocumentRefFile`
+  per opened document.
+- After restore, the header showed `1 / N` until the first scroll (restored page was not seeded). Fixed.
+
+### Not verified / open
+- **Within-page scroll offset is not restored** (page + zoom only, by design).
+- Reopen-at-restore was exercised with a single document; behaviour when the saved zoom is far from fit-width
+  on a different-sized window is unjudged.
+- Recents menu was rendered by tests, not clicked in the live app.
+- The TOC panel overlays the left edge; at very narrow windows it clamps to 80 % of width (unit-level only).
+- Keyboard-only navigation of the TOC (Tab/Enter) not exercised.
+- Scroll feel (M0 check 4) is still the owner's judgement — surfaced at M6 with a release build.

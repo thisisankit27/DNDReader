@@ -9,8 +9,10 @@ chrome="${CHROME:-google-chrome}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
+CHROME_EXTRA=
 render() { # render <html> <pdf>
   "$chrome" --headless=new --disable-gpu --no-sandbox --no-pdf-header-footer \
+    $CHROME_EXTRA \
     --print-to-pdf="$2" "file://$1" >/dev/null 2>&1
 }
 
@@ -72,7 +74,27 @@ $(for i in 1 2 3 4 5 6 7 8; do para; done)
 </body></html>
 HTML
 
+# Nested headings, one chapter per page: the table-of-contents fixture.
+cat >"$work/outline.html" <<HTML
+<!doctype html><html lang="en"><head><meta charset="utf-8"><style>
+ @page { margin: 22mm; }
+ body { font: 12pt/1.5 "Liberation Serif","DejaVu Serif",serif; }
+ section { break-after: page; }
+</style></head><body>
+<section><h1>Chapter One</h1><h2>First section</h2><p>Opening text of chapter one.</p>
+<h2>Second section</h2><p>More text in chapter one.</p></section>
+<section><h1>Chapter Two</h1><h2>Methods</h2><p>Opening text of chapter two.</p></section>
+<section><h1>Chapter Three</h1><h2>Results</h2><p>Opening text of chapter three.</p>
+<h2>Discussion</h2><p>Closing text.</p></section>
+</body></html>
+HTML
+
 for n in prose technical two_column; do
   render "$work/$n.html" "$here/$n.pdf"
   echo "wrote $here/$n.pdf ($(stat -c %s "$here/$n.pdf") bytes)"
 done
+
+# Only this fixture carries a document outline (bookmarks).
+CHROME_EXTRA="--export-tagged-pdf --generate-pdf-document-outline"
+render "$work/outline.html" "$here/outline.pdf"
+echo "wrote $here/outline.pdf ($(stat -c %s "$here/outline.pdf") bytes)"

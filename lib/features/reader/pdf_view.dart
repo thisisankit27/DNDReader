@@ -8,16 +8,20 @@ import 'package:pdfrx/pdfrx.dart';
 class PdfView extends StatelessWidget {
   const PdfView({
     super.key,
-    required this.path,
+    required this.documentRef,
     required this.controller,
     this.onPageChanged,
     this.onViewerReady,
     this.onLoadFailed,
     this.onTextSelectionChange,
     this.onDocumentTap,
+    this.initialPage,
   });
 
-  final String path;
+  /// Held by the owner for the lifetime of one open document. Creating a new
+  /// ref on every build (what `PdfViewer.file` does) stranded the first load
+  /// when a rebuild arrived while it was in flight.
+  final PdfDocumentRef documentRef;
   final PdfViewerController controller;
   final ValueChanged<int?>? onPageChanged;
   final void Function(PdfDocument document)? onViewerReady;
@@ -27,12 +31,16 @@ class PdfView extends StatelessWidget {
   /// A plain tap on the document (not a drag/selection).
   final VoidCallback? onDocumentTap;
 
+  /// Page to show first (restoring the last position).
+  final int? initialPage;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return PdfViewer.file(
-      path,
+    return PdfViewer(
+      documentRef,
       controller: controller,
+      initialPageNumber: initialPage ?? 1,
       params: PdfViewerParams(
         margin: 12,
         backgroundColor: Colors.transparent,

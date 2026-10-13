@@ -445,6 +445,10 @@ class _DevHarnessState extends State<DevHarness> {
         final name = ctrl ? combo.substring(5) : combo;
         final (phys, logi, ch) = switch (name) {
           'e' => (PhysicalKeyboardKey.keyE, LogicalKeyboardKey.keyE, 'e'),
+          't' => (PhysicalKeyboardKey.keyT, LogicalKeyboardKey.keyT, 't'),
+          'equal' => (PhysicalKeyboardKey.equal, LogicalKeyboardKey.equal, '='),
+          'minus' => (PhysicalKeyboardKey.minus, LogicalKeyboardKey.minus, '-'),
+          '0' => (PhysicalKeyboardKey.digit0, LogicalKeyboardKey.digit0, '0'),
           'escape' => (
             PhysicalKeyboardKey.escape,
             LogicalKeyboardKey.escape,
