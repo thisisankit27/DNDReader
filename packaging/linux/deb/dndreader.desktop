@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=DNDReader
+GenericName=PDF Reader
+Comment=Read a PDF and look up the meaning of selected text
+Exec=dndreader %f
+Icon=dndreader
+Terminal=false
+Categories=Office;Viewer;Education;
+MimeType=application/pdf;
+StartupWMClass=io.github.thisisankit27.dndreader

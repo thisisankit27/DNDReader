@@ -14,7 +14,7 @@ Source of truth for the plan is `docs/implementation-plan.md`. This file records
 | M0b Hardened fork | **Built and verified except the profile success path (needs the owner's `sudo`)** — see "M0b" below |
 | M4 Embedded search panel (+ GPU spike) | **Done 2026-10-14** — see "M4" below |
 | M5 Polish (+ table of contents) | **Done 2026-10-14** — see "M5" below |
-| M6 Tests, packaging, docs | Pending |
+| M6 Tests, packaging, docs | **Done 2026-10-14** except host install of the `.deb` (needs the owner's `sudo`) — see "M6" below |
 
 **Order (amended 2026-10-14): M1 → M2 → M3 → M0b → M4 → M5 → M6.** The hardened fork is not a
 dependency of the shell, reader or selection action, while §5.1.1 gate 3 is the last existential
@@ -764,3 +764,53 @@ drive Google's consent UI to manufacture evidence.
 - The TOC panel overlays the left edge; at very narrow windows it clamps to 80 % of width (unit-level only).
 - Keyboard-only navigation of the TOC (Tab/Enter) not exercised.
 - Scroll feel (M0 check 4) is still the owner's judgement — surfaced at M6 with a release build.
+
+## M6 — Tests, packaging, docs (2026-10-14, branch `feat/m6-tests-packaging`)
+
+### Built
+- `packaging/linux/build-deb.sh` → `dist/dndreader_0.1.0-1_amd64.deb` (**326 MB**, 1.5 GB installed, zstd, built
+  under `fakeroot`, no root). Contents: bundle under `/usr/lib/dndreader`, `/usr/bin/dndreader` symlink,
+  `/etc/apparmor.d/dndreader` (a conffile), `.desktop` (`MimeType=application/pdf`, `Exec=dndreader %f`), SVG icon,
+  `/usr/share/doc/dndreader/{copyright,HARDENING.md,webview_cef.LICENSE,cef/LICENSE.txt,cef/CREDITS.html}`.
+  `chrome-sandbox` is **not** shipped.
+- `postinst` loads the profile (`apparmor_parser -r`, non-fatal); `prerm` unloads it.
+- `packaging/linux/verify-sandbox.sh`: non-root check of a running instance.
+- README rewritten to what exists (status, features, install, sandbox requirement, limitations 1–15).
+- Plan §8 gained an "As built" paragraph (deviations: prerm not postrm; hand-added Depends).
+
+### Verified (how)
+- **Dependency derivation:** `ldd` over every bundled object → `dpkg -S`, plus hand-added `libegl1`, `libgles2`,
+  `xclip`, `apparmor`. The first clean-container start **failed** on `libEGL.so.1`, then `libGLESv2.so.2`
+  (runtime `dlopen`s `ldd` cannot see); both were added and the check re-run.
+- **Clean Ubuntu 26.04 container** (`docker run ubuntu:26.04`, no Flutter/clang/CEF): `apt-get install ./….deb`
+  resolved all dependencies from the archive with no manual installs; `postinst` ran (no AppArmor in a
+  container, so the guarded branch skipped it — as designed); the app **started under Xvfb** and loaded the 3-page
+  fixture (`PdfViewer: Loaded 3 of 3 pages`); `remove` left the conffile, `purge` removed it. Two `ldd`
+  "not found" lines remain and are benign: `libjvm.so` (needed only by `libdartjni.so`, never loaded) and
+  `libflutter_linux_gtk.so` (resolved at run time because the executable loads it first; the app started).
+- **Sandbox without `chrome-sandbox`:** on the host (snap-shell `complain` label), with the file removed from the
+  bundle, search loaded and `verify-sandbox.sh` printed `PASS: 2 renderer(s) sandboxed` (seccomp 2, no shared
+  user/pid/net namespace). Same result with the file present.
+- Pre-PR checks on the branch tip: `dart format --set-exit-if-changed .`, `flutter analyze`, `flutter test`
+  (99 tests), `flutter build linux --release` — all pass (see the run at the end of this section).
+
+### Not verified
+- **Installing the `.deb` on the host and starting the sandbox under the packaged AppArmor profile.** It needs
+  root. Commands for the owner (read `packaging/linux/apparmor/dndreader` first):
+  `sudo apt install ./dist/dndreader_0.1.0-1_amd64.deb`, then start `dndreader`, select text, `Ctrl+E`, and run
+  `packaging/linux/verify-sandbox.sh` — expect label `dndreader` and `PASS`. Everything sandbox-active above was
+  observed in the snap `complain` context; the unconfined success path is **unobserved**.
+- **Fail-closed in the packaged release binary:** observed in the debug build (unconfined launch ⇒ no CEF init,
+  no renderers, panel shows "Search unavailable"); the release binary has no dev harness to trigger a search, so
+  it was not driven.
+- `.deb` on Ubuntu 24.04 or any other release (built against 26.04's library names, e.g. `libglycin-2-0`).
+- Wayland vs X11 behaviour of the packaged app beyond the Xvfb start (the dev runs used Wayland/XWayland).
+- Lintian, upgrade paths between package versions, and a published apt repository (none exists).
+- **Scroll feel (M0 check 4) and GPU opinion remain the owner's.** Run the release bundle both ways:
+  `build/linux/x64/release/bundle/dndreader file.pdf` (default, software) and
+  `DNDREADER_GPU=1 …` (GPU compositing; faster in the scripted test, but the GPU process has no seccomp filter).
+- DNDReader's own licence: no `LICENSE` file exists; this is an owner decision and is stated in the package's
+  `copyright` file.
+
+### State of the branch
+`main` is untouched (`da3813a`); everything is on `feat/mvp-reader`, ready for review. No PR was opened.

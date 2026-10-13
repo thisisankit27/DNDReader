@@ -15,22 +15,29 @@ No AI engine of our own. No API keys. No accounts. No backend.
 
 ## Status
 
-**In development; no released app.** The embedded-search feasibility spike (M0) and a security
-investigation are done, and implementation is under way on the `feat/mvp-reader` branch. The plan is
-in [docs/implementation-plan.md](docs/implementation-plan.md); what has actually been observed is in
-[docs/progress.md](docs/progress.md). Ubuntu is the only target of the first MVP.
+**Ubuntu MVP complete on the `feat/mvp-reader` branch; no release has been published.** It builds, runs and
+is tested on Ubuntu 26.04 only. What has actually been observed — and what has not — is in
+[docs/progress.md](docs/progress.md); the plan is in [docs/implementation-plan.md](docs/implementation-plan.md).
 
 | Platform | State |
 |---|---|
-| Ubuntu / Linux | Target of the first MVP — **not yet built** |
+| Ubuntu / Linux | **Built and verified** on Ubuntu 26.04 (x86-64) — see the "not verified" list in progress.md |
 | Android | Architecturally supported — **not built, not tested** |
 | iOS, Windows, macOS | Architecturally supported — **not built, not tested** |
 
-The architecture is a single Flutter codebase intended to reach all five platforms. Nothing in this
-README should be read as a claim that a platform works until it has actually been built and
-verified on that platform.
+The architecture is a single Flutter codebase intended to reach other platforms. Nothing in this
+README should be read as a claim that a platform other than Ubuntu works.
 
-## How it will work
+## What it does
+
+- Opens a PDF (file picker, `Ctrl+O`, command-line argument, or "Open With"), scrolls, zooms, shows `page / total`.
+- **Contents** (`Ctrl+T`): the document's own outline as a nested list in a left-edge panel; click to jump.
+- Select text → **Find meaning** (or `Ctrl+E`) → Google Search results in a side panel on the right;
+  `Esc` closes it and you are exactly where you were.
+- Remembers theme, zoom, last document and page, recent documents and window size.
+- Light/dark/system theme, keyboard shortcuts (Menu → Keyboard shortcuts).
+
+## How it works
 
 | Piece | Choice |
 |---|---|
@@ -55,28 +62,43 @@ sudo apt update && sudo apt install -y \
 ```
 
 Flutter **3.47.7** or newer (`pdfrx` requires ≥ 3.47.0). CEF is downloaded automatically on the
-first desktop build. Allow roughly **6–8 GB** of free disk for the Flutter SDK, CEF and build
+first desktop build (the pinned fork's `third/cef`). Allow roughly **6–8 GB** of free disk for the Flutter SDK, CEF and build
 artifacts.
 
 ## Run and build
 
-These commands describe the intended workflow; they will work once the application exists.
-
 ```bash
 flutter pub get
-flutter run -d linux                  # development
+flutter run -d linux                  # development; see the sandbox note below
 
 dart format --set-exit-if-changed .   # pre-PR checks
 flutter analyze
 flutter test
 flutter build linux --release
 
-bash packaging/linux/build-deb.sh     # → build/dndreader_<ver>_amd64.deb
-sudo apt-get install -y ./build/dndreader_<ver>_amd64.deb
+packaging/linux/build-deb.sh          # → dist/dndreader_<ver>-1_amd64.deb
+sudo apt install ./dist/dndreader_0.1.0-1_amd64.deb
 ```
 
-Installing the `.deb` registers DNDReader for `application/pdf`, so PDFs can be opened with it from
-the file manager, or from a terminal with `dndreader path/to/file.pdf`.
+The `.deb` is built for the Ubuntu release it is built on (its `Depends` are derived from the
+bundle's shared libraries). It installs to `/usr/lib/dndreader`, registers DNDReader for
+`application/pdf`, and installs the AppArmor profile described below. It is about 330 MB
+(1.5 GB installed).
+
+### The browser sandbox needs an AppArmor profile
+
+DNDReader requires Chromium's sandbox for the search panel. On Ubuntu 24.04+
+(`kernel.apparmor_restrict_unprivileged_userns=1`) an unconfined program cannot create the user
+namespace that sandbox needs, so the package installs `/etc/apparmor.d/dndreader` and loads it. **If
+the sandbox cannot start, the app does not fall back to an unsandboxed browser**: the panel shows
+"Search unavailable" and offers *Open in browser*.
+
+- Running a development build from the source tree is therefore unsandboxed-unavailable by default.
+  Either install the profile for your build directory (root; read the script first):
+  `sudo packaging/linux/dev/install-dev-apparmor.sh`, or, **debug builds only**, set
+  `DNDREADER_ALLOW_UNSANDBOXED_DEV=1` (loudly logged; release builds ignore it).
+- To check that the sandbox is really active, open the search panel and run
+  `packaging/linux/verify-sandbox.sh` (no root).
 
 ## What leaves your device
 
@@ -98,7 +120,7 @@ The panel's cookies and storage are held **in memory only** and discarded when D
 3. **Consent screens, and occasionally a CAPTCHA, may appear** in the panel — more likely on shared
    or VPN connections. They can be dealt with in place, as in any browser.
 4. **The panel needs a network connection.** Reading PDFs works offline.
-5. **The desktop build is large** (~1.5 GB uncompressed for a release bundle; a package has not been built yet)
+5. **The desktop build is large** (~1.5 GB installed, a ~330 MB `.deb`)
    because CEF bundles Chromium. On Linux CEF uses a **software** rendering path by default (verified), so panel
    scrolling may feel less smooth than a real browser. GPU compositing is an explicit, off-by-default opt-in
    (`DNDREADER_GPU=1`): it is smoother in a scripted-scroll test, but the GPU process then runs without its
@@ -120,10 +142,17 @@ The panel's cookies and storage are held **in memory only** and discarded when D
    there.
 10. **Shipping Chromium makes security updates this project's job.** DNDReader pins a specific CEF
     (Chromium) build; a bare `.deb` has **no automatic update channel**, so fixes reach you only when
-    you install a newer package.
+    you install a newer package. The intended cadence is in plan §10 (rebuild within 14 days of a critical
+    fix, 30 days otherwise); the bundled version is shown under Menu → About. The current pin is
+    Chromium 149.0.7827.156 (CEF 149.0.4).
 11. **Consent screens may reappear once per launch**, because search cookies are not persisted.
     Behaviour behind an EEA/UK consent wall is **unverified** — none appeared in testing.
-12. **`xclip` is needed to paste** into the panel (the plugin shells out to it).
+12. **`xclip` is needed to paste** into the panel (the plugin shells out to it); the `.deb` depends on it.
+13. **Restoring the last position restores the page and zoom**, not the scroll offset within the page.
+14. **Selecting text across a page boundary, or in scanned/odd PDFs, depends on `pdfrx`/PDFium text
+    extraction**; wrapped-hyphen handling is covered by fixtures, not by arbitrary documents.
+15. **The licence of DNDReader itself has not been chosen yet** (no `LICENSE` file). The bundled
+    components' licences ship in `/usr/share/doc/dndreader/`.
 
 ## Not included
 

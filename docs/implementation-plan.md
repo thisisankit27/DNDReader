@@ -392,7 +392,7 @@ fork work waits until the gates clear — and then lands before anything that ne
   loading/error/retry, Back, Open-in-browser, Close restoring scroll position; sandbox-unavailable
   and consent-hint states (§6). **Then a time-boxed GPU-compositing spike** (frames/s and CPU,
   GPU off vs on, sandbox on, against a locally authored long page — not Google).
-- **M5 — Finish the experience.** Persisted zoom/theme/last document/recents/window size,
+- **M5 — Finish the experience** (+ a table-of-contents panel, added at the owner's request after the plan was approved: the PDF's own outline as a left-edge overlay, `Ctrl+T`, navigation via `PdfViewerController.goToDest`). Persisted zoom/theme/last document/recents/window size,
   keyboard shortcuts, typography and spacing pass.
 - **M6 — Tests, packaging, docs.** Full test run, `.deb` (with AppArmor profile, `xclip`, CEF
   attribution files), README rewritten to match reality. The scroll-feel judgement (M0 check 4) is
@@ -473,6 +473,15 @@ as "almost but not completely removed", and a root-owned setuid helper is the wr
 Consequences: an **AppImage cannot install a system profile** (and its FUSE mount is `nosuid`), so on
 Ubuntu ≥ 24.04 it would always fail closed; distros without the restriction need no profile
 [unverified here]; kernels with user namespaces disabled fail closed.
+
+**As built (M6).** `packaging/linux/build-deb.sh` + `packaging/linux/deb/{dndreader.desktop,dndreader.svg,postinst,prerm}`.
+Deviations from the text above: the profile is unloaded in **`prerm`** (the file still exists then), not
+`postrm`; `chrome-sandbox` is stripped from the package (verified that the sandbox starts without it);
+`Depends` is derived by `ldd` + `dpkg -S` and then **extended by hand** with `libegl1`, `libgles2`
+(runtime `dlopen`s invisible to `ldd`, found by the clean-container start), `xclip` and `apparmor`;
+the fork's licence ships as `webview_cef.LICENSE`; DNDReader's own licence is not shipped because no
+`LICENSE` file exists yet (owner decision). `packaging/linux/verify-sandbox.sh` checks a running
+instance (renderers: seccomp 2, own user/pid/net namespaces).
 
 **CEF runtime dependencies must be derived, not guessed.** `Depends: libgtk-3-0` is a starting
 assumption, not an answer — CEF links a long list of X11, NSS, DBus and font libraries that are

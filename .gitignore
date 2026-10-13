@@ -49,3 +49,4 @@ app.*.map.json
 
 # Local development overrides (point at a local webview_cef checkout)
 pubspec_overrides.yaml
+dist/
