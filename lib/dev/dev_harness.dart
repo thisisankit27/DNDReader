@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -6,8 +7,11 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
 
+import '../features/reader/selection_anchor.dart';
+import '../features/reader/selection_pill.dart';
 import 'selection_debug.dart';
 
 /// Path of a one-line command file polled by [DevHarness]. Empty disables it.
@@ -295,9 +299,10 @@ class _DevHarnessState extends State<DevHarness> {
       case 'clear':
         await _need().textSelectionDelegate.clearTextSelection();
       case 'clickpill':
-        final box =
-            SelectionDebugOverlay.pillKey.currentContext?.findRenderObject()
-                as RenderBox?;
+        final ctx =
+            SelectionPill.pillKey.currentContext ??
+            SelectionDebugOverlay.pillKey.currentContext;
+        final box = ctx?.findRenderObject() as RenderBox?;
         if (box == null) throw StateError('pill not visible');
         await _click(box.localToGlobal(box.size.center(Offset.zero)));
       case 'pagetext': // pagetext <page> [maxChars] — raw vs structured text for gate 1
@@ -391,6 +396,121 @@ class _DevHarnessState extends State<DevHarness> {
         _log('  pages $from..$to: U+0002=$wraps  hyphen+newline=$literal');
         for (final s in samples) {
           _log('   $s');
+        }
+      case 'anchor': // anchor — predicted on-screen rects of the selection's end characters
+        final c = _need();
+        final sel = widget.selection();
+        final anchors = sel == null ? null : selectionAnchors(c, sel);
+        if (anchors == null) {
+          _log('  ANCHOR none');
+        } else {
+          final origin = c.localToGlobal(Offset.zero)!;
+          Rect g(Rect r) => r.shift(origin);
+          Map<String, double> m(Rect r) => {
+            'l': r.left,
+            't': r.top,
+            'r': r.right,
+            'b': r.bottom,
+          };
+          _log(
+            '  ANCHOR ${json.encode({
+              'start': m(g(anchors.start)),
+              'end': m(g(anchors.end)),
+              'bounds': m(g(anchors.bounds)),
+              'zoom': c.currentZoom,
+              'page': c.pageNumber,
+              'origin': [origin.dx, origin.dy],
+            })}',
+          );
+        }
+      case 'pill': // pill — global rect of the real pill, or "none"
+        final box =
+            SelectionPill.pillKey.currentContext?.findRenderObject()
+                as RenderBox?;
+        if (box == null || !box.attached) {
+          _log('  PILL none');
+        } else {
+          final tl = box.localToGlobal(Offset.zero);
+          _log(
+            '  PILL ${json.encode({'l': tl.dx, 't': tl.dy, 'r': tl.dx + box.size.width, 'b': tl.dy + box.size.height})}',
+          );
+        }
+      case 'key': // key ctrl+e | key escape — through the engine's key-data pipeline
+        final combo = a[1].toLowerCase();
+        final ctrl = combo.startsWith('ctrl+');
+        final name = ctrl ? combo.substring(5) : combo;
+        final (phys, logi, ch) = switch (name) {
+          'e' => (PhysicalKeyboardKey.keyE, LogicalKeyboardKey.keyE, 'e'),
+          'escape' => (
+            PhysicalKeyboardKey.escape,
+            LogicalKeyboardKey.escape,
+            null,
+          ),
+          _ => throw ArgumentError('unknown key $name'),
+        };
+        var t = 0;
+        void send(
+          PhysicalKeyboardKey p,
+          LogicalKeyboardKey l,
+          bool down, [
+          String? c,
+        ]) {
+          // Framework-level injection: update HardwareKeyboard, then hand the
+          // event to the focus manager's key handler (what the engine's key
+          // pipeline ends in). The engine-level KeyData path waits for a legacy
+          // raw-key message that only a real embedder sends.
+          final stamp = Duration(microseconds: 1000 * ++t);
+          final KeyEvent ev = down
+              ? KeyDownEvent(
+                  physicalKey: p,
+                  logicalKey: l,
+                  character: c,
+                  timeStamp: stamp,
+                )
+              : KeyUpEvent(physicalKey: p, logicalKey: l, timeStamp: stamp);
+          // Update HardwareKeyboard, then run the focus tree's key handler: the
+          // two steps the engine pipeline performs for a real key press.
+          HardwareKeyboard.instance.handleKeyEvent(ev);
+          final handled = ServicesBinding
+              .instance
+              .keyEventManager
+              .keyMessageHandler
+              ?.call(KeyMessage([ev], null));
+          _log(
+            '  key ${down ? "down" : "up"} ${l.keyLabel} handled=$handled '
+            'ctrlPressed=${HardwareKeyboard.instance.isControlPressed}',
+          );
+        }
+        if (ctrl) {
+          send(
+            PhysicalKeyboardKey.controlLeft,
+            LogicalKeyboardKey.controlLeft,
+            true,
+          );
+        }
+        send(phys, logi, true, ch);
+        send(phys, logi, false);
+        if (ctrl) {
+          send(
+            PhysicalKeyboardKey.controlLeft,
+            LogicalKeyboardKey.controlLeft,
+            false,
+          );
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      case 'focus': // focus — who has primary focus, and its ancestor chain
+        final f = FocusManager.instance.primaryFocus;
+        final chain = <String>[];
+        for (FocusNode? n = f; n != null; n = n.parent) {
+          chain.add(
+            '${n.debugLabel ?? n.runtimeType} canRequest=${n.canRequestFocus}',
+          );
+        }
+        _log(
+          '  FOCUS primary=${f?.debugLabel ?? f?.runtimeType} chain=${chain.length}',
+        );
+        for (final c in chain) {
+          _log('    $c');
         }
       case 'viewport':
         final c = _need();
