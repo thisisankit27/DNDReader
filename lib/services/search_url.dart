@@ -13,13 +13,21 @@ const String kSearchUrlPrefix = 'https://www.google.com/search?q=';
 /// query, not a document.
 const int kMaxQueryLength = 300;
 
-// A hyphen at the *end of a line* followed by a lowercase continuation is a
-// typesetting wrap ("idio-\npathic"). A hyphen followed by a space on the same
-// line ("pre- and post-operative") is a real compound and must be kept, so the
-// repair only applies across a line break.
+// What PDFium/pdfrx actually hands us for line-wrapped words (observed in M2,
+// gate 1; see docs/progress.md):
+//   * a hyphen glyph at the end of a line followed by a lowercase continuation
+//     arrives as U+2010 + "\n" ("silico‐\nvolcano"); the ASCII hyphen
+//     variant arrives as U+0002 with the line break swallowed ("well\u0002known");
+//   * invisible soft hyphens (U+00AD) may remain inside words;
+//   * superscripts and table cells arrive as separate lines ("x\n2").
+// A hyphen followed by a space on the *same* line ("pre- and post-operative")
+// is a real compound and must be kept, so wrap repair only crosses a line break.
 final RegExp _wrappedHyphen = RegExp(
-  r'(\p{L})-[ \t]*\r?\n[ \t]*(\p{Ll})',
+  r'(\p{L})[-\u2010][ \t]*\r?\n[ \t]*(\p{Ll})',
   unicode: true,
+);
+final RegExp _controlChars = RegExp(
+  r'[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]',
 );
 final RegExp _whitespaceRun = RegExp(r'\s+', unicode: true);
 
@@ -28,8 +36,14 @@ final RegExp _whitespaceRun = RegExp(r'\s+', unicode: true);
 String? normalizeQuery(String rawSelection, {int maxLength = kMaxQueryLength}) {
   var text = rawSelection;
 
-  // 1. Repair line-wrap hyphenation while line breaks are still visible.
+  // 1. Drop invisible soft hyphens and PDFium's U+0002 hyphen-at-line-end marker
+  //    (the two halves of the word are joined), then repair visible wrap hyphens
+  //    while line breaks are still visible.
+  text = text.replaceAll('\u00AD', '').replaceAll('\u0002', '');
   text = text.replaceAllMapped(_wrappedHyphen, (m) => '${m[1]}${m[2]}');
+
+  // Any other control character is noise in a search query.
+  text = text.replaceAll(_controlChars, ' ');
 
   // 2. Collapse CR/LF/tabs and runs of whitespace, then trim.
   text = text.replaceAll(_whitespaceRun, ' ').trim();

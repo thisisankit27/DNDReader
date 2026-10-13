@@ -9,7 +9,7 @@ Source of truth for the plan is `docs/implementation-plan.md`. This file records
 | M0 Feasibility spike | **Done 2026-10-13** — see below. Checks 1, 2, 5, 7 observed; 3 and 4 have evidence but the judgement is the owner's; 6 partly observed (no interstitial appeared). |
 | Security investigation | **Done 2026-10-13/14** — see "Security investigation" below. Decisions logged. |
 | M1 Shell | **Done 2026-10-14** — see "M1" below |
-| M2 PDF reading (+ §5.1.1 gates 1–2) | Pending |
+| M2 PDF reading (+ §5.1.1 gates 1–2) | **Done 2026-10-14** — gates 1 and 2 hold; see "M2" below |
 | M3 Selection → action (+ gate 3) | Pending |
 | M0b Hardened fork | Pending — runs **after M3's gates clear**, before M4 |
 | M4 Embedded search panel (+ GPU spike) | Pending |
@@ -391,3 +391,86 @@ that observation.
 - `file_picker` on Linux shells out to `zenity`/`kdialog` — `zenity` exists on this machine; whether it
   becomes a `Depends:` entry is decided at M2/M6 once the picker is exercised.
 - Open/zoom controls are intentionally disabled (no document yet).
+
+---
+
+## M2 — Real PDF reading (+ §5.1.1 gates 1 and 2) (2026-10-14, branch `feat/m2-pdf-reading`)
+
+**Built:** `file_picker` → `pdfrx` reader: continuous scroll, zoom −/+ (header), page indicator `n / N`,
+open another document, command-line/"Open With" opening (`main(args)`), a clean failure state (no raw
+error text), `Ctrl+O`. Text selection enabled with `showContextMenuAutomatically: false`. Fixtures:
+`test_fixtures/make_fixtures.sh` (headless Chrome → `prose.pdf`, `technical.pdf`, `two_column.pdf`;
+original text, no personal files). Dev-only tooling (inert in release builds / without dart-defines):
+`lib/dev/selection_debug.dart` (gate readout + a plain "test pill"), `lib/dev/dev_harness.dart`
+(command-file driver that injects pointer events *inside Flutter* and dumps pdfrx state).
+
+**`file_picker` on Linux** uses the XDG desktop portal over D-Bus (`xdp_filechooser.dart`), not
+zenity/kdialog — so no extra `Depends:` entry for it.
+
+### §5.1.1 gate 1 — text retrieval (observed)
+All selections below were made with **real pointer drags** (injected through Flutter's
+`GestureBinding`), then read back through `PdfTextSelection`.
+
+| Selection | `getSelectedText()` | `getSelectedTextRanges()` |
+|---|---|---|
+| word `efficient` | `"efficient"` | `p1[41,50)` |
+| phrase `Idiopathic pulmonary fibrosis` | exact | `p1[139,168)` |
+| 3-line sentence | exact, with `\n` at each wrap | `p1[14,138)` |
+| `Pre- and\npost-operative care, a state-of-the-art device` | exact (`\n` at the wrap, compound hyphens kept) | `p1[462,517)` |
+| across the column break (two-column fixture) | `…quotes and dashes.\nThe office staff found…` (reading order col 1 → col 2) | `p1[1900,2011)` |
+| across a page boundary (real spec PDF) | continues into the running header: `…themselves.\n3Shared MIME-info Database\n2.2. The…` | **two entries**: `p3[2681,2741)`, `p4[0,71)` |
+| technical fixture: superscripts | `Let x\n2 + y\n2 = z\n2 hold [12].` (superscripts on their own line) | `p1[697,727)` |
+| URL with `? & =`, `< 0.05`, en dash, a code block | exact | exact |
+
+- **Offsets:** `PdfPageTextRange` is `[start, end)` (end **exclusive**); `textSelectionPointRange`'s end is
+  **inclusive** (`p1#41 → p1#49` for the same word).
+- **`PdfPageText.fullText`** is non-empty on every text page tried; `charRects.length == fullText.length`.
+  Raw text (`loadText`) uses `\r\n`, structured text (`loadStructuredText`, what selection uses) uses `\n`.
+- **Ligatures** (`ffi fi fl ff`: *efficient, office, difficult, affluent, official, workflow, findings*)
+  come out as ordinary letters, correctly.
+- **Hyphenation — three distinct shapes, all of which matter:**
+  1. An ASCII hyphen at a line end (a real compound broken across lines) arrives as **U+0002**, with the
+     newline swallowed: `a well\u0002known "quoted phrase"`. U+0002 reaches application code unless stripped.
+  2. A typeset wrap hyphen (Chrome soft-hyphen break) arrives as **U+2010 + `\n`**:
+     `pneumonoultramicroscopicsilico‐\nvolcanoconiosis`. Invisible soft hyphens (U+00AD) are dropped.
+  3. A hyphen followed by a space on the same line (`Pre- and`) is a plain `-`.
+  There is **no way to tell a real compound from a typeset wrap** in cases 1–2; joining is the
+  better trade for search ("idiopathic" over "idio- pathic").
+- The real 19-page pdfTeX document (shared-mime-info spec) contains **no** line-end hyphens at all
+  (pdfrx and `pdftotext` agree), so real-world hyphenation evidence comes from the generated fixtures only.
+- Independent cross-check: `pdftotext` agreed on line content and ordering for `prose.pdf`.
+
+**Change made because of gate 1:** `normalizeQuery` now removes U+00AD and U+0002, joins `-`/U+2010 + line
+break + lowercase, and replaces other control characters (tests use the exact observed strings). Plan §5.2
+was amended (the original `(\w)-\s+(\w)` rule would also have produced "preand post-operative").
+
+### §5.1.1 gate 2 — selection preservation (observed)
+- `selectionWhilePillShown = true`: the selection was still present 500 ms after a plain widget
+  (stacked above the viewer, overlapping the page's top edge) appeared.
+- Two **real pointer taps** on that widget: `pillTaps = 2`, `selectionAfterLastPillTap = true`, and
+  `onTextSelectionChange` did **not** fire again (2 callbacks total for the whole sequence); highlight intact
+  in the captured frame.
+- With `showContextMenuAutomatically: false` **no pdfrx context menu appeared** after selecting. Right-click
+  behaviour was not exercised.
+- Caveat for M3: the test widget sat at a fixed position. Re-verify with the real pill anchored over the
+  selection, and confirm the widget is *above* the viewer in hit-testing order.
+
+### Other behaviour observed
+- Zoom: header `+` → 1.73 → 3.46, `−` → 1.73 (real pointer clicks). Page indicator `2 / 2` after `goToPage(2)`.
+- A non-PDF file renamed `.pdf` shows the failure state with no raw error text; zoom controls disabled.
+- Opening a second document resets selection state (a stale-selection bug in the *debug* readout was
+  found and fixed; the product code already cleared `_selection` on open).
+- Debug build: ~29 s incremental; first-launch document load 145 ms for a 3-page file.
+
+### Not verified / open
+- The **native file dialog** (portal) was not exercised: it is an out-of-process interactive dialog.
+  Opening by argument and via the harness *was* exercised.
+- Password-protected PDFs: shown as the generic failure state; no password prompt (out of scope).
+- Scanned/image-only pages (no text layer): not tested here (plan §9 #6 "no selectable text" message
+  is not built yet).
+- Behaviour with very large documents and memory use: the largest document tried has 19 pages.
+- Light theme still not rendered; keyboard Tab order not exercised.
+- Selection by **touch/handles** is not applicable on this platform and was not tested.
+- **Release build** (`flutter build linux --release`, no CEF yet): succeeds in 38 s, 30 MB bundle; the
+  dev driver's command strings (`scanhyphen`, `dragchars`, `clickpill`, `colbreak`) are **absent** from
+  the release `libapp.so` (checked with `strings`).

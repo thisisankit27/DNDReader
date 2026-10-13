@@ -302,13 +302,20 @@ This is the only non-trivial pure logic in the app, so it carries the unit tests
 selections are messy: hard line breaks, hyphenated line-wraps, ligatures, stray whitespace.
 
 ```
-1. Collapse CR/LF/tabs to single spaces.
-2. Repair line-wrap hyphenation: /(\w)-\s+(\w)/ → "$1$2"   (e.g. "idio-\npathic" → "idiopathic")
-3. Collapse runs of whitespace; trim.
-4. Reject empty/whitespace-only → noSelection state, no navigation.
-5. Cap at ~300 characters on a word boundary (a search query, not a document).
-6. Uri.encodeQueryComponent(query) into the single URL template constant.
+1. Drop U+00AD (soft hyphen) and U+0002 (PDFium's marker for a hyphen at a line end — it swallows
+   the line break, so "well\u0002known" joins to "wellknown").
+2. Repair visible wrap hyphens across a *line break* only:  (\p{L})[-\u2010]\s*\n\s*(\p{Ll}) → "$1$2"
+   ("silico\u2010\nvolcano" → "silicovolcano"; "pre- and post-operative" is left alone).
+3. Replace any remaining control character with a space.
+4. Collapse CR/LF/tabs and runs of whitespace to single spaces; trim.
+5. Reject empty/whitespace-only → noSelection state, no navigation.
+6. Cap at ~300 code points on a word boundary (a search query, not a document).
+7. Uri.encodeQueryComponent(query) into the single URL template constant.
 ```
+
+*(Amended after §5.1.1 gate 1: the original rule `(\w)-\s+(\w)` would have turned "pre- and
+post-operative" into "preand post-operative", and the observed PDFium output (U+0002, U+2010) was
+not what the rule assumed. See `docs/progress.md`, M2.)*
 
 Tests: spaces, `&`, `+`, `#`, `?`, quotes, em-dashes, non-Latin/Unicode text, multi-line
 selections, hyphenated wraps, a 5,000-character selection, whitespace-only, and a single word.
@@ -508,8 +515,8 @@ report it as done if it was not run.
 
 **Fixtures:** `test_fixtures/make_fixtures.sh` generates three PDFs from local HTML via
 `google-chrome --headless --print-to-pdf` (verified present): book prose, a technical article with
-headings, and a two-column long-paragraph layout. For a real-world 240-page technical document use
-`/usr/share/doc/shared-mime-info/shared-mime-info-spec.pdf` (verified present). **Do not use the
+headings, and a two-column long-paragraph layout. For a real-world technical document use
+`/usr/share/doc/shared-mime-info/shared-mime-info-spec.pdf` (verified present; **19 pages**, pdfTeX — it has no hyphen wraps). **Do not use the
 PDFs in `~/Downloads` — those are the user's personal documents.**
 
 **Automated tests** are deliberately modest, because with no AI provider there is little
