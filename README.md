@@ -15,7 +15,7 @@ No AI engine of our own. No API keys. No accounts. No backend.
 
 ## Status
 
-**Ubuntu MVP complete on the `feat/mvp-reader` branch; no release has been published.** It builds, runs and
+**Ubuntu MVP complete (v0.1.5 on `main`); `feat/windows-port` carries the Windows port and is versioned 0.2.0. No release has been published.** It builds, runs and
 is tested on Ubuntu 26.04 only. What has actually been observed — and what has not — is in
 [docs/progress.md](docs/progress.md); the plan is in [docs/implementation-plan.md](docs/implementation-plan.md).
 
@@ -100,7 +100,7 @@ flutter test
 flutter build linux --release
 
 packaging/linux/build-deb.sh          # → dist/dndreader_<ver>-1_amd64.deb
-sudo apt install ./dist/dndreader_0.1.5-1_amd64.deb
+sudo apt install ./dist/dndreader_0.2.0-1_amd64.deb
 ```
 
 The `.deb` is built for the Ubuntu release it is built on (its `Depends` are derived from the

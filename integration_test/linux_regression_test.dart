@@ -104,7 +104,40 @@ void main() {
     await tester.pump();
   }
 
-  if (_mode == 'quit') {
+  if (_mode == 'failclosed') {
+    // Release build, no AppArmor profile for this path: the sandbox cannot
+    // start and the app must fail closed. Run with
+    // DNDREADER_ALLOW_UNSANDBOXED_DEV=1 set to prove a release build ignores it.
+    testWidgets('failclosed: no CEF, panel unavailable, reading still works', (
+      tester,
+    ) async {
+      _log(
+        'kReleaseMode=${const bool.fromEnvironment('dart.vm.product')} '
+        'override env=${Platform.environment['DNDREADER_ALLOW_UNSANDBOXED_DEV']}',
+      );
+      await openReader(tester);
+      await selectAWord(tester); // reading + selection + pill state work
+      await ctrlE(tester);
+      await _until(
+        tester,
+        () => session.phase == SearchPhase.unavailable,
+        timeout: const Duration(seconds: 20),
+        what: 'the panel to report unavailable',
+      );
+      _log('phase=${session.phase.name} reason="${session.unavailableReason}"');
+      await _settle(tester, const Duration(seconds: 3));
+      final r = await Process.run('pgrep', ['-c', '-x', 'dndreader']);
+      _log(
+        'dndreader processes (main + any CEF children): ${r.stdout.toString().trim()}',
+      );
+      expect(r.stdout.toString().trim(), '1');
+      // Still usable: the page field jumps, a second search stays unavailable.
+      expect(find.byKey(const ValueKey('page-field')), findsOneWidget);
+      await session.openInBrowser();
+      expect(opened, hasLength(1));
+      _log('Open in browser -> ${opened.single}');
+    });
+  } else if (_mode == 'quit') {
     testWidgets('quit: exits after a search without hanging', (tester) async {
       await openReader(tester);
       await selectAWord(tester);
@@ -188,6 +221,24 @@ void main() {
       _log(
         'search loaded in ${sw.elapsedMilliseconds} ms, url=${session.currentUrl}',
       );
+      // The browser's child processes: sandboxed renderers carry Seccomp: 2.
+      for (final dir in Directory('/proc').listSync()) {
+        final pid = dir.path.split('/').last;
+        if (int.tryParse(pid) == null) continue;
+        try {
+          final cmd = File('/proc/$pid/cmdline').readAsStringSync();
+          if (!cmd.contains('dndreader') || !cmd.contains('--type=')) continue;
+          final type = RegExp(r'--type=([a-z-]+)').firstMatch(cmd)?.group(1);
+          final st = File('/proc/$pid/status').readAsStringSync();
+          final sec = RegExp(r'Seccomp:\s+(\d)').firstMatch(st)?.group(1);
+          final noSandbox = cmd.contains('--no-sandbox');
+          _log(
+            'child pid=$pid type=$type Seccomp=$sec no-sandbox-flag=$noSandbox',
+          );
+        } on FileSystemException {
+          // exited meanwhile
+        }
+      }
       expect(Uri.parse(session.currentUrl!).host, contains('google'));
       expect(session.canGoBack, isFalse);
 

@@ -345,3 +345,53 @@ pulling a cable.
 The sandboxed/fail-closed path (no root for the AppArmor profile); a real network disconnect and reconnect;
 real link clicks inside the panel; the Cloudflare gate on Linux; Wayland-native input; the `.deb`; anything on
 Windows.
+
+## 10. Linux release-candidate pass (Ubuntu session, 2026-10-14)
+
+Follows §9. Branch `release/0.2.0-rc`. Owner's post-install steps: `docs/linux-0.2.0-release-checklist.md`.
+
+### What was run and how
+
+- **Static:** `dart format`, `flutter analyze`, **173 tests** pass. **Release build** `flutter build linux
+  --release` succeeds.
+- **Version:** `pubspec.yaml` `0.2.0+1`, `lib/build_info.dart` `0.2.0`; README install line and the Windows
+  checklist's installer filename updated. Historical records (the v0.1.5 completion report, progress log,
+  verification evidence for the `0.1.5` installer) are deliberately left naming 0.1.5.
+- **Environment caveat that shaped the pass:** this shell is the VS Code snap's extension host, label
+  `snap.code.code (complain)`. A child launched from it can create the user namespace the sandbox needs, so the
+  app's *sandbox-on* path works here without any profile for the build path — and the *fail-closed* path
+  cannot be reached from it. An unconfined launch context was obtained with `systemd-run --user`
+  (`/proc/self/attr/current` → `unconfined`).
+- **Release builds cannot be driven here.** `flutter test`/`drive` need the VM service, which a release binary
+  lacks, and OS-level synthetic input does not reach the app. So behavioural checks ran on the **debug** build
+  of the same sources; release-specific properties were checked statically.
+
+### Results
+
+| # | Check | Result | Basis |
+|---|---|---|---|
+| 1 | Release ignores `DNDREADER_ALLOW_UNSANDBOXED_DEV` | The variable name appears **0×** in the release `libapp.so` and `dndreader` (present in the debug kernel blob) — the lookup is compiled out under `kReleaseMode`; plus the existing `unsandboxedOverrideAllowed(releaseMode: true)` unit test | **verified** (strings) + unit test |
+| 2 | **Fail-closed**, unconfined launch, override off | `phase=unavailable`, reason "this application is not permitted to create the user namespaces the browser sandbox needs … preflight stage 12"; **1** `dndreader` process (no CEF children); the document opened, a word selected and the action became available; Open in browser targets the search URL | **verified** on the debug build (same code path release takes) |
+| 3 | Sandbox **on**, override off, search | Results in 1.1 s. Children: renderers `Seccomp: 2`, gpu-process `Seccomp: 2`, broker `Seccomp: 2`, **no `--no-sandbox`** on any browser child | **verified**, debug build, `snap.code.code (complain)` context |
+| 4 | Offline, sandbox on | In a **network namespace with no interface but loopback** (`ERR_INTERNET_DISCONNECTED -106`): failure shown in **990 ms**, still failed 10 s later, Retry recovers once a loopback server is up. Earlier dead-proxy run: 723 ms | **verified**; not `nmcli networking off` — that would cut this session's own link |
+| 5 | Back over 3 navigations, close panel | Enabled state matched at every step; `visibleRect` unchanged (page 2) | **verified** (§9, repeated sandbox-on) |
+| 6 | Quit after a search | Real X11 close request (`WM_DELETE_WINDOW`): 10 processes → 0 in **0.31 s** | **verified** |
+| 7 | Nothing left behind | `q=<term>` appears nowhere under `~/.config/cef_user_data`; `Cookies`, `History`, `Login Data`, `Web Data` not modified by the run (`google.com/search` in `Web Data` is Chromium's built-in search-engine template) | **verified** (grep, mtimes). The directory itself is CEF's root cache and holds only browser metadata |
+| 8 | `.deb` | `dist/dndreader_0.2.0-1_amd64.deb`, 341,599,198 B (326 MiB), sha256 `5cb7ca40…ee4b05`; no `chrome-sandbox`, AppArmor profile at `/etc/apparmor.d/dndreader`, `libcef.so` bundled; `ldd` of every bundled object: 0 "not found" | **verified** |
+| 9 | Dependencies | Derived by `build-deb.sh` (ldd → `dpkg -S`, plus `libegl1 libgles2 xclip apparmor`); **identical** to the 0.1.5 package's `Depends:` | **verified** (diffed with `dpkg-deb -f`) |
+
+### Found and fixed in this pass
+
+- `CefSearchWebView.dispose()` called `WebviewManager().quit()` even when CEF was never initialised (the
+  fail-closed start). The plugin asserts initialisation, so a debug build raised an unhandled async error on every
+  fail-closed search. Now `quit()` is only called when this view started CEF (`_cefStarted`). Release builds
+  strip asserts, so users were not affected; the success path is unchanged.
+
+### Not verified
+
+- The installed package: its `postinst` loading the AppArmor profile, `verify-sandbox.sh` on an installed
+  0.2.0, search through `/usr/lib/dndreader` (needs `sudo`; do not run here).
+- A **release** binary performing a search (cannot be driven); the sandbox-on result is from a debug build.
+- `nmcli`-level disconnect on the real network; real link clicks; the Cloudflare gate on Linux.
+- Wayland-native input; Ubuntu releases other than 26.04; upgrade-over-0.1.5.
+- CEF 149.0.7827.156 against the current CEF stable branch (plan §10's patch cadence).

@@ -139,7 +139,7 @@ outside directory that is neither followed nor removed. **Not verified on Window
 
 Take the installer from the latest green run of `windows.yml` (artifact `dndreader-windows-installer`).
 
-1. **Install.** Run `DNDReader-0.1.5-setup-x64.exe`. Note any SmartScreen prompt (the installer is unsigned) and
+1. **Install.** Run `DNDReader-0.2.0-setup-x64.exe`. Note any SmartScreen prompt (the installer is unsigned) and
    whether it asked for admin. *(Installs per-user by default.)*
 2. **WebView2 detection.** On this machine it should skip the Runtime install. If you can, try a machine or VM
    without the Runtime and confirm the wizard installs it (progress text mentions WebView2).

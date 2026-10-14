@@ -1432,3 +1432,11 @@ Details and evidence: `docs/windows-verification/REPORT.md` §9.
 - Tests 170 → 173. `dart format`, `flutter analyze` clean; `flutter build linux --release` succeeds.
 - **Not verified:** the sandboxed path (needs root for AppArmor), real disconnect, real link clicks, the
   Cloudflare gate on Linux, everything on Windows.
+
+## Linux release candidate 0.2.0 (2026-10-14, branch `release/0.2.0-rc`, Ubuntu)
+
+Version bumped 0.1.5 → 0.2.0; `.deb` built (341,599,198 B, `Depends:` unchanged vs 0.1.5). Fail-closed,
+sandbox-on, offline, Back, scroll, quit and on-disk-residue checks run on the real app (debug build; release
+cannot be driven here) — see `docs/windows-verification/REPORT.md` §10 and
+`docs/linux-0.2.0-release-checklist.md`. One small fix: no `WebviewManager().quit()` when CEF never started.
+**Not verified:** the installed package and its AppArmor profile (needs the owner's `sudo`).
