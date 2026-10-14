@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Full-screen control for the window, over the runner's `dndreader/window`
-/// channel (Linux). Flutter itself has no window API, and a plugin for one
+/// channel (Linux and Windows). Flutter itself has no window API, and a plugin for one
 /// would be a new dependency for a single call.
 ///
 /// Where the channel does not exist (tests, other platforms) every call is a

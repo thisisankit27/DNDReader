@@ -21,8 +21,10 @@ import '../../services/settings_service.dart';
 import 'selection_action_controller.dart';
 import 'selection_anchor.dart';
 import 'selection_pill.dart';
+import '../search/embedded_browser_info.dart';
 import '../search/search_panel.dart';
 import '../search/search_session.dart';
+import '../../services/path_names.dart';
 import '../../services/search_url.dart';
 
 /// The single screen: header on top, reading surface below.
@@ -222,7 +224,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   String get _title {
     final path = _path;
     if (path == null) return 'DNDReader';
-    return path.split(Platform.pathSeparator).last;
+    return baseName(path);
   }
 
   /// Page count of the open document; null when nothing is open.
@@ -302,14 +304,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
     if (_controller.isReady) _controller.goToDest(dest);
   }
 
-  void _showAbout() {
+  Future<void> _showAbout() async {
+    // Resolved first: on Windows the Runtime's version is asked of the Runtime.
+    final browser = await embeddedBrowserDescription();
+    if (!mounted) return;
     showAboutDialog(
       context: context,
       applicationName: 'DNDReader',
       applicationVersion: kAppVersion,
       applicationLegalese:
           'Search results are shown by Google in an embedded browser.\n'
-          'Embedded browser: $kBundledChromium',
+          '$browser',
     );
   }
 
