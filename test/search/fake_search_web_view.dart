@@ -24,6 +24,13 @@ class FakeSearchWebView implements SearchWebView {
   @override
   set onLoadEnd(void Function(String url)? callback) => _onEnd = callback;
 
+  // The superset: exercises every capability-gated conformance assertion.
+  @override
+  SearchWebViewCapabilities get capabilities => const SearchWebViewCapabilities(
+    reportsHistory: true,
+    releaseFocusIsNoop: false,
+  );
+
   void Function(bool canGoBack)? _onHistory;
 
   @override

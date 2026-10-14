@@ -52,6 +52,14 @@ class Webview2SearchWebView implements SearchWebView {
   set onHistoryChanged(void Function(bool canGoBack)? callback) =>
       _onHistoryChanged = callback;
 
+  // WebView2 reports native history (onHistoryChanged above) and can hold
+  // native OS focus after the webview is hidden, so releaseFocus is real.
+  @override
+  SearchWebViewCapabilities get capabilities => const SearchWebViewCapabilities(
+    reportsHistory: true,
+    releaseFocusIsNoop: false,
+  );
+
   @override
   Future<void> start(Uri initialUrl) async {
     // A missing Runtime is the common failure on a bare Windows 10 install.
