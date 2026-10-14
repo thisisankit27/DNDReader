@@ -53,6 +53,15 @@ class SelectionActionController extends ChangeNotifier {
     _setQuery(normalizeQuery(raw));
   }
 
+  /// The query for the selection as it is *now*, without waiting for the
+  /// debounce: used by the right-click menu, which a fast user can open before
+  /// the pill has appeared. Null when nothing searchable is selected.
+  Future<String?> resolveQueryNow() async {
+    final selection = _selection;
+    if (selection == null || !selection.hasSelectedText) return null;
+    return normalizeQuery(await selection.getSelectedText());
+  }
+
   /// Hides the action until the selection changes again (Esc).
   void dismiss() {
     if (_dismissed) return;

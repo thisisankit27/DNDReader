@@ -915,3 +915,19 @@ did not select a word.
 - **Not verified:** the light theme (screenshots were dark); triple-click (not implemented); right-click with the
   contents panel open. (The Ctrl+C / Ctrl+A hints in the menu are pdfrx's own key bindings, read from its source,
   not exercised here.)
+
+## Post-MVP: right-click "Find meaning" before the pill appears (2026-10-14, branch `feat/m10-menu-fast-path`, v0.1.4)
+
+Owner report: double-click then an immediate right-click showed a menu without "Find meaning"; waiting for the pill
+first made it appear.
+
+- **Cause:** the menu offered the item only when `SelectionActionController.available` was true, and that is set
+  after a 120 ms debounce plus an async text read — a fast right-click beat it.
+- **Fix:** the menu offers "Find meaning" whenever text is selected, and choosing it reads the selection at that
+  moment (`SelectionActionController.resolveQueryNow()`), so it neither depends on the debounce nor uses a stale
+  query. A selection that normalises to nothing (whitespace) does nothing.
+- **Verified:** 2 new unit tests (query resolved before the debounce settles; null for none/blank), 113 tests pass;
+  in the app, double-click → right-click → "Find meaning" issued the search `q=efficient`.
+- **Not verified:** the *fast* timing itself in the running app — the harness polls every 400 ms, longer than the
+  debounce, so it cannot reproduce "instantly"; the unit test covers the logic. Google answered that session's
+  repeated test searches with its `/sorry/` page (rate limit); not automated against, per the standing rule.

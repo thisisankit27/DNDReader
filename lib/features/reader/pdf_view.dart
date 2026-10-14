@@ -18,7 +18,6 @@ class PdfView extends StatelessWidget {
     this.initialPage,
     this.contentInsets = EdgeInsets.zero,
     this.contextMenuOpen,
-    this.canFindMeaning,
     this.onFindMeaning,
   });
 
@@ -55,8 +54,8 @@ class PdfView extends StatelessWidget {
   /// move anything of its own that would sit on top of it (the action pill).
   final ValueNotifier<bool>? contextMenuOpen;
 
-  /// Whether the right-click menu offers "Find meaning", and what it does.
-  final bool Function()? canFindMeaning;
+  /// Offered in the right-click menu whenever text is selected (not only once
+  /// the pill has appeared, which waits for the selection to settle).
   final VoidCallback? onFindMeaning;
 
   @override
@@ -124,7 +123,7 @@ class PdfView extends StatelessWidget {
           delegate.copyTextSelection();
           params.dismissContextMenu();
         }),
-      if (delegate.hasSelectedText && (canFindMeaning?.call() ?? false))
+      if (delegate.hasSelectedText && onFindMeaning != null)
         _MenuEntry('Find meaning', 'Ctrl+E', () {
           params.dismissContextMenu();
           onFindMeaning?.call();

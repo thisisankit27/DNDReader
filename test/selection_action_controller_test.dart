@@ -54,6 +54,25 @@ void main() {
     },
   );
 
+  test(
+    'resolveQueryNow reads the current selection before the debounce',
+    () async {
+      final c = make();
+      addTearDown(c.dispose);
+      c.onSelectionChanged(FakeSelection('  fast   word '));
+      expect(c.available, isFalse, reason: 'pill not shown yet');
+      expect(await c.resolveQueryNow(), 'fast word');
+    },
+  );
+
+  test('resolveQueryNow is null with no searchable selection', () async {
+    final c = make();
+    addTearDown(c.dispose);
+    expect(await c.resolveQueryNow(), isNull);
+    c.onSelectionChanged(FakeSelection('   '));
+    expect(await c.resolveQueryNow(), isNull);
+  });
+
   test('a burst of changes is read once, for the last selection', () async {
     final c = make();
     addTearDown(c.dispose);
