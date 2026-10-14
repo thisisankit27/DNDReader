@@ -207,10 +207,10 @@ void main() {
           lockProbe: probe ?? (_) => LockState.free,
         );
 
-    test('profile path is <temp>/dndreader-search-<pid>', () {
+    test('profile path is <temp><sep>dndreader-search-<pid>', () {
       expect(
         store(pid: 77).profileDir.path,
-        '${temp.path}/dndreader-search-77',
+        '${temp.path}${Platform.pathSeparator}dndreader-search-77',
       );
     });
 
