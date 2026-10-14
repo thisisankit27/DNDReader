@@ -950,3 +950,138 @@ problem for colour-blind users.
   published Okabe–Ito set, not tested with a simulator or with users; the dark theme is unaffected because the page
   is always white, but the light theme was not re-screenshotted for this change; contrast of the translucent
   overlay against *coloured* PDF backgrounds or images was not examined.
+
+---
+
+# Windows port (WebView2) — `feat/windows-port`
+
+Source of truth: `docs/windows-implementation-plan.md`. Labels as there: **verified** (with how),
+**read** (source/docs, not executed), **not verified**. **Nothing on Windows is verified until CI or
+the owner demonstrates it; a green CI run proves compilation and unit tests, not that the app runs.**
+
+| Milestone | Status |
+|---|---|
+| W1 Scaffold, CI, green Windows build | **Done 2026-10-14** — both CI jobs green (run `38514280955`); see "W1" below |
+| W2 WebView2 search panel | not started |
+| W3 Native runner seams | not started |
+| W4 Reader ergonomics and honesty | not started |
+| W5 Packaging | not started |
+| W6 Docs and handover | not started |
+
+## W1 — Scaffold, CI, green Windows build (2026-10-14, branch `feat/w1-scaffold-ci`)
+
+### Supply-chain check on `webview_flutter_windows` 1.3.0 (plan §3.4) — passed, with stated limits
+
+The package borrows the Flutter team's federated naming and its publisher domain (`tomars.tech`)
+does not match its repo owner (`omar-hanafy`). Findings:
+
+**1. Lineage — verified by comparing source, not by reading the README.**
+- The published archive (`pub.dev/api/archives/webview_flutter_windows-1.3.0.tar.gz`) was downloaded
+  and its sha256 (`599d1254…dd35`) **matches** `pubspec.lock`'s recorded hash. 
+- `omar-hanafy/webview_flutter_windows` is a **GitHub fork** (`fork: true`, parent
+  `jnschulze/flutter-webview-windows`). Cloned: 151 commits, of which 92 are by the original author
+  (Niklas Schulze) from 2021-04-30 onward; the merge-base with upstream `main` is `ed81bbe`
+  (2025-06-26), upstream's current head. The fork adds 31 commits (29 by Omar Khaled, 2 by external
+  contributors) on top.
+- Tag `webview_flutter_windows-v1.3.0` (`fa4ee15`): its `windows/` and `lib/` trees are
+  **byte-identical** to the published archive (`diff -rq`; the only difference is a `.gitignore`
+  that is not published). What pub.dev ships is what the repo's tag contains.
+- `LICENSE` is the original BSD-3-Clause, copyright Niklas Schulze.
+- The owner account is 7 years old (2019-03-13) with 84 public repos. The repo was forked
+  2026-06-10; 2 stars. **Adoption is low**, as the plan says; that is a maturity risk, not
+  evidence of malice.
+
+**2. What the build fetches — read from `windows/cmake/nuget.cmake` and `windows/CMakeLists.txt`.**
+- `find_program(NUGET nuget)` first; **only if no `nuget` is on `PATH`** does it download
+  `https://dist.nuget.org/win-x86-commandline/v7.6.0/nuget.exe` with `TLS_VERIFY ON` and
+  `EXPECTED_HASH SHA256=751ee5e7…8fb8a2`, then re-checks the hash and `FATAL_ERROR`s on mismatch.
+  **Verified by me:** I downloaded that URL independently and its sha256 equals the pinned value.
+  This is stronger than the plan's "downloads nuget.exe if missing" worry implied: it is pinned by
+  version and by hash.
+- It then runs `nuget install` (at CMake configure time) for **two pinned versions** from
+  nuget.org: `Microsoft.Web.WebView2` 1.0.3967.48 and `Microsoft.Windows.ImplementationLibrary`
+  1.0.260126.7.
+- **Not established / residual trust:** (a) the plugin pins those NuGet package *versions* but not
+  their *content hashes*; integrity there rests on nuget.org and NuGet's own package-signature
+  handling (Microsoft publishes both packages signed — **read**, not checked here).
+  (b) **On CI the hash-pinned download path never ran:** the `where nuget` diagnostic (run 2)
+  shows `C:\ProgramData\Chocolatey\bin\nuget.exe` already on the runner's `PATH`, so
+  `find_program` found it and no `nuget.exe` was fetched. The runner's NuGet is whatever the
+  GitHub image ships; it is not pinned by this project. The download-and-verify branch was read
+  and its hash checked by hand, but it has **not been executed** by anything here.
+- `windows/CMakeLists.txt` contains no other `file(DOWNLOAD)`, `execute_process` or
+  `add_custom_command`; the plugin's own Windows sources contain no HTTP client, process-spawn or
+  shell-execute calls (`grep` over `windows/` and `lib/`: only `LoadLibraryA("ComBase.dll")` and
+  `("coremessaging.dll")`, both OS libraries, for WinRT activation).
+- The Dart side opens only its own method/event channels.
+
+**3. Conclusion.** Lineage is genuine and the build hook is pinned and hash-checked. **No hard stop.**
+I did not audit the C++ source line by line; the claims above are about provenance, the build
+hook and the absence of network/process primitives, not a full security review. The mitigations in
+plan §3.4 stand: exact pin (`webview_flutter_windows: 1.3.0`, no caret), thin wrapper behind
+`SearchWebView`, "Open in browser" as the escape hatch.
+
+### What was built
+
+- **Fork change** — `thisisankit27/webview_cef` branch `dndreader/windows`, commit
+  `0e82566`: removes the `windows:` entry from `flutter.plugin.platforms` (Linux/macOS untouched) and
+  records the change and trade-off in the fork's `HARDENING.md`. `pubspec.yaml` pins that **SHA**,
+  not the branch. Trade-off, as in the plan: the fork becomes DNDReader-specific on this axis.
+- **`flutter create --platforms=windows`** (guarded). Touched exactly:
+  - `.metadata` — **replaced** the `linux` migration entry with `windows` rather than adding one;
+    restored the `linux` entry by hand, so both are present (plus `root`).
+  - `analysis_options.yaml` — added `windows/**` to `analyzer.exclude` (kept; correct).
+  - `pubspec.lock` — see below.
+  - `test/widget_test.dart` — a default counter test that cannot pass against this app; **deleted**.
+  - `windows/` — 16 new files (runner, CMake, generated plugin registrant).
+  - `README.md` and `.gitignore` were **not** touched.
+- **`pubspec.yaml`** — `webview_cef` ref → `0e82566…`; added `webview_flutter_windows: 1.3.0`.
+- **`pubspec.lock`** — regenerated with the local `pubspec_overrides.yaml` moved aside, so it records
+  the git ref and the hosted package (the `flutter create` run had written the local override path
+  into the lock). The new package's sha256 equals the archive hash checked above.
+- **`.github/workflows/windows.yml`** — `analyze_test` (ubuntu-latest) and `build_windows`
+  (windows-latest) as specified in plan §7 W1, plus guards that `pubspec_overrides.yaml` is absent
+  and that the fork resolves from a git ref, and a bundle assertion that also fails if any `libcef*`
+  ships.
+
+### CI results
+
+**Run 1** (`38513515416`, commit `8ca3e29` on `feat/w1-scaffold-ci`):
+
+- `build_windows` — **success**. `flutter build windows --release` built `dndreader.exe` in
+  **215 s** (cold caches). The `jni` FFI build, named as the likeliest blocker, **built without
+  intervention** (`dartjni.dll` is in the bundle). All four assertions passed (`dndreader.exe`,
+  `WebView2Loader.dll`, `flutter_windows.dll`, `data/app.so`); **no `libcef*` in the bundle**.
+  Bundle is **37 MB**: `dndreader.exe` 92 KB, `flutter_windows.dll` 21 MB, `pdfium.dll` 7.2 MB,
+  `webview_flutter_windows_plugin.dll` 554 KB, `WebView2Loader.dll` 159 KB, `dartjni.dll` 58 KB,
+  `url_launcher_windows_plugin.dll` 98 KB. (Plan estimated ~40 MB; CEF's 326 MB is absent.)
+- `analyze_test` — **failed on my own guard step**, not on format/analyze/test: the `grep -A6`
+  window was one line short of `source: git`. Fixed (`sed` range). The format, analyze and test
+  steps in that job were therefore skipped on run 1.
+
+**Run 2** (`38514280955`, commit `1bbdd01`) — **both jobs green.**
+
+- `analyze_test` — success: no overrides file, fork resolved as `source: git`, `dart format`
+  (41 files, 0 changed), `flutter analyze` (no issues) and `flutter test` all passed on Ubuntu.
+- `build_windows` — success; the build took **93 s** with the Flutter, pub and `build/windows`
+  caches restored (215 s cold). The same four bundle assertions passed.
+- `where nuget` → `C:\ProgramData\Chocolatey\bin\nuget.exe` (see the supply-chain note above).
+
+### Verified (how)
+
+- 115/115 tests pass, `dart format --set-exit-if-changed .` clean, `flutter analyze` clean —
+  **run locally** on Linux after the scaffold.
+- `flutter build linux --release` — **run locally**, succeeded with the new pins (via the local
+  override, which now resolves to the fork's `dndreader/windows` checkout).
+- Windows app **compiles and links** with all plugins, and the bundle contains the expected files and
+  no CEF — **CI run 1**, `build_windows` job.
+- The pinned fork SHA resolves from the public repo — CI `flutter pub get` fetched it (`Got
+  dependencies`), no override present on the runner.
+
+### Not verified
+
+- That the Windows app **starts**, shows a window, opens a PDF, or renders anything — never run.
+- That `WebView2Loader.dll` sitting beside `dndreader.exe` is what the plugin loads at runtime.
+- The hash-pinned `nuget.exe` download branch — CI used the runner's preinstalled NuGet.
+- Runtime behaviour of `jni`/`dartjni.dll` on Windows; it compiles, nothing more is claimed.
+- WebView2 sandbox state, Windows 11 behaviour — as plan §8.4.
