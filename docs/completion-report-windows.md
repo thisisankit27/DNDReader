@@ -198,3 +198,9 @@ gh run list --branch feat/windows-port
 ```
 
 Branch `feat/windows-port`; evidence per milestone in `docs/progress.md` ("Windows port" section).
+
+## Addendum — Linux regression pass (2026-10-14)
+
+A pass on the real Linux app after the D1–D4 changes found and fixed one Linux-only regression introduced by the
+shared D3 session change (failed loads were turned into successful ones). Back is deliberately platform-specific
+(Windows: webview history; Linux: session list + `goBack()`). Details: `docs/windows-verification/REPORT.md` §9.
