@@ -961,7 +961,7 @@ the owner demonstrates it; a green CI run proves compilation and unit tests, not
 
 | Milestone | Status |
 |---|---|
-| W1 Scaffold, CI, green Windows build | **CI green** — see "W1" below (run results recorded there) |
+| W1 Scaffold, CI, green Windows build | **Done 2026-10-14** — both CI jobs green (run `38514280955`); see "W1" below |
 | W2 WebView2 search panel | not started |
 | W3 Native runner seams | not started |
 | W4 Reader ergonomics and honesty | not started |
@@ -1004,9 +1004,11 @@ does not match its repo owner (`omar-hanafy`). Findings:
 - **Not established / residual trust:** (a) the plugin pins those NuGet package *versions* but not
   their *content hashes*; integrity there rests on nuget.org and NuGet's own package-signature
   handling (Microsoft publishes both packages signed — **read**, not checked here).
-  (b) Which path the CI runner took (preinstalled NuGet vs. the hash-pinned download) was not
-  visible, because `flutter build` hides CMake output; a `where nuget` diagnostic step was added to
-  the workflow so the next run records it.
+  (b) **On CI the hash-pinned download path never ran:** the `where nuget` diagnostic (run 2)
+  shows `C:\ProgramData\Chocolatey\bin\nuget.exe` already on the runner's `PATH`, so
+  `find_program` found it and no `nuget.exe` was fetched. The runner's NuGet is whatever the
+  GitHub image ships; it is not pinned by this project. The download-and-verify branch was read
+  and its hash checked by hand, but it has **not been executed** by anything here.
 - `windows/CMakeLists.txt` contains no other `file(DOWNLOAD)`, `execute_process` or
   `add_custom_command`; the plugin's own Windows sources contain no HTTP client, process-spawn or
   shell-execute calls (`grep` over `windows/` and `lib/`: only `LoadLibraryA("ComBase.dll")` and
@@ -1044,7 +1046,7 @@ plan §3.4 stand: exact pin (`webview_flutter_windows: 1.3.0`, no caret), thin w
 
 ### CI results
 
-**Run 1** (`38513515416`, commit `ccf…` on `feat/w1-scaffold-ci`):
+**Run 1** (`38513515416`, commit `8ca3e29` on `feat/w1-scaffold-ci`):
 
 - `build_windows` — **success**. `flutter build windows --release` built `dndreader.exe` in
   **215 s** (cold caches). The `jni` FFI build, named as the likeliest blocker, **built without
@@ -1055,7 +1057,15 @@ plan §3.4 stand: exact pin (`webview_flutter_windows: 1.3.0`, no caret), thin w
   `url_launcher_windows_plugin.dll` 98 KB. (Plan estimated ~40 MB; CEF's 326 MB is absent.)
 - `analyze_test` — **failed on my own guard step**, not on format/analyze/test: the `grep -A6`
   window was one line short of `source: git`. Fixed (`sed` range). The format, analyze and test
-  steps in that job were therefore skipped on run 1; they pass locally (below).
+  steps in that job were therefore skipped on run 1.
+
+**Run 2** (`38514280955`, commit `1bbdd01`) — **both jobs green.**
+
+- `analyze_test` — success: no overrides file, fork resolved as `source: git`, `dart format`
+  (41 files, 0 changed), `flutter analyze` (no issues) and `flutter test` all passed on Ubuntu.
+- `build_windows` — success; the build took **93 s** with the Flutter, pub and `build/windows`
+  caches restored (215 s cold). The same four bundle assertions passed.
+- `where nuget` → `C:\ProgramData\Chocolatey\bin\nuget.exe` (see the supply-chain note above).
 
 ### Verified (how)
 
@@ -1072,6 +1082,6 @@ plan §3.4 stand: exact pin (`webview_flutter_windows: 1.3.0`, no caret), thin w
 
 - That the Windows app **starts**, shows a window, opens a PDF, or renders anything — never run.
 - That `WebView2Loader.dll` sitting beside `dndreader.exe` is what the plugin loads at runtime.
-- Which NuGet source the runner used (diagnostic step added, result pending the next run).
+- The hash-pinned `nuget.exe` download branch — CI used the runner's preinstalled NuGet.
 - Runtime behaviour of `jni`/`dartjni.dll` on Windows; it compiles, nothing more is claimed.
 - WebView2 sandbox state, Windows 11 behaviour — as plan §8.4.
