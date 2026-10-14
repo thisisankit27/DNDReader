@@ -962,7 +962,7 @@ the owner demonstrates it; a green CI run proves compilation and unit tests, not
 | Milestone | Status |
 |---|---|
 | W1 Scaffold, CI, green Windows build | **Done 2026-10-14** — both CI jobs green (run `38514280955`); see "W1" below |
-| W2 WebView2 search panel | **Code complete 2026-10-14**; compiles and unit-tested only — see "W2" below |
+| W2 WebView2 search panel | **Done 2026-10-14** — CI green; compiles and unit-tested only, never run — see "W2" below |
 | W3 Native runner seams | not started |
 | W4 Reader ergonomics and honesty | not started |
 | W5 Packaging | not started |
@@ -1166,7 +1166,8 @@ checklist. Not a divergence recorded as fact.
 ### Verified (how)
 
 - 142 tests, format and analyze clean, Linux release build — **run locally**.
-- Windows compile — **CI** (run recorded below).
+- Windows compile and the 142 tests on Ubuntu — **CI run `38515229190`**, both jobs green. This
+  proves compilation only.
 
 ### Not verified
 
