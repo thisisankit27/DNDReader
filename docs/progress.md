@@ -964,7 +964,7 @@ the owner demonstrates it; a green CI run proves compilation and unit tests, not
 | W1 Scaffold, CI, green Windows build | **Done 2026-10-14** — both CI jobs green (run `38514280955`); see "W1" below |
 | W2 WebView2 search panel | **Done 2026-10-14** — CI green; compiles and unit-tested only, never run — see "W2" below |
 | W3 Native runner seams | **Done 2026-10-14** — CI green (compile only); nothing run — see "W3" below |
-| W4 Reader ergonomics and honesty | not started |
+| W4 Reader ergonomics and honesty | **Done 2026-10-14** — see "W4" below; wheel feel unmeasured |
 | W5 Packaging | not started |
 | W6 Docs and handover | not started |
 
@@ -1245,3 +1245,47 @@ harness here, and CI only compiles it.
 - Focus: whether the package's reported "focus bouncing" occurs in this app, and whether
   `releaseFocus()` on close is sufficient. Plan §W3.4 says investigate on Windows; not done.
 - That `%APPDATA%\dndreader` can be created on a locked-down profile (failures are silent by design).
+
+## W4 — Reader ergonomics and honesty on Windows (2026-10-14, branch `feat/w4-ergonomics`)
+
+### What changed
+
+- **Mouse wheel is per-platform** (`PdfView.wheelScrollFactorFor`): Linux stays **2.0**, Windows is
+  **1.0**. The plan said to retune "by measurement" and I cannot measure on Windows, so this is
+  derived from source instead: I fetched the Flutter engine at this SDK's revision
+  (`abaf9c5`, `engine/src/flutter/shell/platform/windows/flutter_window.cc`) and **read**
+  `UpdateScrollOffsetMultiplier()` — the per-notch scroll is `lines_per_scroll × 100/3` px, with
+  `lines_per_scroll` from `SPI_GETWHEELSCROLLLINES` (default 3), i.e. **100 px per notch** by
+  default and following the user's Windows setting. Linux's is `53` (`fl_scrolling_manager.cc`).
+  Linux 53 × 2.0 ≈ 106 px; Windows 100 × 1.0 = 100 px — the same target. Keeping 2.0 on Windows
+  would have been ~200 px per notch. **This is a calculation, not a measurement**: whether it
+  *feels* right is on the owner's checklist, and `arrowKeyStep = 60` is unchanged. `Ctrl`+wheel
+  zoom remains entirely pdfrx-internal.
+- **Document name** — new `lib/services/path_names.dart` `baseName()`, used by the header and the
+  Recents menu. On Windows it splits on `\` **and** `/`; elsewhere only `/` (a backslash is a legal
+  filename character on Linux). Trailing separators are ignored.
+- **About dialog** — `embedded_browser_info.dart`. On Windows it shows `Microsoft Edge WebView2
+  Runtime <version>` from `getWebViewVersion()` (or "not found") plus "Search data is kept in a
+  temporary folder that is deleted when you quit"; `kBundledChromium` (a CEF string that would be
+  **wrong** there) is shown on Linux only. `_showAbout` became `async` for the version lookup.
+- Three comments that became false were corrected: `window_service.dart` ("Linux and Windows"),
+  `pdf_picker.dart`, and `pdf_view.dart` (rewritten with the per-platform derivation).
+
+### Tests
+
+149 pass (142 + 7 new, `test/path_names_test.dart`): mixed and trailing separators on both
+conventions, the backslash-is-a-filename-character case, empty/root, both About variants, and the
+two wheel factors.
+
+### Verified (how)
+
+- Dart: format, analyze, 149 tests — local; CI recorded below.
+- The Windows per-notch distance — **read** from engine source at the matching revision.
+
+### Not verified
+
+- How the wheel *feels* on Windows, and the actual px per notch with the owner's mouse and system
+  setting (a Precision touchpad sends its own deltas, not covered by this reasoning).
+- That the About dialog's Runtime version lookup returns what the code expects.
+- On Windows, that `Platform.pathSeparator` is no longer used anywhere that matters (grep: no
+  remaining `split(Platform.pathSeparator)` in `lib/`).
