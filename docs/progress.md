@@ -1440,3 +1440,12 @@ sandbox-on, offline, Back, scroll, quit and on-disk-residue checks run on the re
 cannot be driven here) — see `docs/windows-verification/REPORT.md` §10 and
 `docs/linux-0.2.0-release-checklist.md`. One small fix: no `WebviewManager().quit()` when CEF never started.
 **Not verified:** the installed package and its AppArmor profile (needs the owner's `sudo`).
+
+## Pre-merge cleanup (2026-10-14)
+
+Before merging the Windows port to `main`: removed all verification screenshots and their references (the repo
+is public; some captures showed desktop context); removed local filesystem paths from the Windows plan;
+rewrote the 20 commits that carried a personal e-mail address in their metadata to the project's GitHub
+no-reply identity, and dropped the screenshots from history, so neither enters `main`; refreshed stale status
+text (README Windows row, both plans, completion report banner); added `docs/README.md` (index) and
+`docs/windows-owner-test.md`; added `main` to the CI triggers.

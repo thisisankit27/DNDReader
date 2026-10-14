@@ -36,3 +36,7 @@ Only what could **not** be verified without root and an installed package. Every
 
 Not covered by anyone: Wayland-native input (everything here used Flutter-level or X11 events), a second
 Ubuntu release, and CEF 149.0.7827.156's age — check the CEF stable branch before distributing (plan §10).
+
+---
+**Result (2026-10-14):** the owner installed 0.2.0 on Ubuntu and reported that everything works. The
+individual steps were not itemised; treat steps 1–6 as confirmed, 7–8 as not separately reported.

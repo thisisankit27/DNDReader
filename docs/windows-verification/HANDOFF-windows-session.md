@@ -1,3 +1,5 @@
+> **Historical.** This prompt was consumed; D1–D7 are fixed. Current state: `ORCHESTRATOR-HANDOFF.md`.
+
 # Hand-off prompt — Windows session (D1, D3, D5, D6, D7)
 
 Paste everything below the line into a fresh Claude Code session **on the Windows machine**.

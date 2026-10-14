@@ -75,13 +75,13 @@ onto `feat/windows-port` (`66b3567`).
   window rect**; the saved window size changes it.
 - Quit-timing without Google traffic: `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--proxy-server=127.0.0.1:9`.
 - Untracked local-only: `verification/` (full-size captures), `dist/`, the WebView2 bootstrapper (all
-  gitignored). The CI installer copy is in the owner's `Downloads\DNDReader-installer`.
+  gitignored). A copy of the CI installer is kept outside the repository.
 
 ## 6. Rules to keep
 
 Never commit/merge/PR to `main`. One branch per fix off `feat/windows-port`, `--no-ff`, keep tests/format/
 analyze/CI green, trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. **The repo is public:**
-commit only app-cropped screenshots, scan for the username/email/personal paths first. Use only
+do **not** commit screenshots (the earlier set was removed before merge); scan for the username/email/personal paths first. Use only
 `test_fixtures/*.pdf`. Never automate Google or aim input at a CAPTCHA/verification widget. No AI/keys/backend/
 telemetry. Label every claim verified / read / not verified.
 

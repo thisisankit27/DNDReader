@@ -1,13 +1,7 @@
 # DNDReader Windows verification — results
 
-> **Screenshot IDs.** This log was written during the run and cites the original capture names. Only a curated,
-> cropped subset is committed (full-desktop captures stay on the verifying machine). Mapping to
-> `screenshots/`: `01-install-launch`->`01-installer-wizard`, `03-launch-empty`->`02-launch-empty-state`,
-> `05c`->`03-select-multiline`, `05d`->`04-select-near-bottom-pill-under-taskbar`, `06a`->`05-find-meaning-google-loaded`,
-> `07c`->`06-result-click-spurious-error`, `07d`->`07-cloudflare-check-page`, `07h-back-3`->`08-back-disabled-while-page-shown`,
-> `08d`->`09-ctrl-t-contents-after-panel-close`, `09c`->`10-typing-in-panel-works`, `12b`->`11-page-field-focus-outline-after-enter`,
-> `13-fs-in-1`->`12-fullscreen`, `14f`->`13-fullscreen-with-panel`, `15b`->`14-about`, `16d`->`15-light-theme`,
-> `21a`->`16-open-with-list`, `22a`->`17-offline-simulated`, `24a`->`18-right-click-menu`.
+> **Screenshots.** This log was written during the run and cites the original capture IDs (`05c`, `22a`, …). The
+> captures themselves were **removed from the repository** before merge; the log's text carries the observations.
 > The hand-off summary for another Claude session is [REPORT.md](REPORT.md).
 
 

@@ -41,9 +41,9 @@ Before the fix (`a4dfa20`) `Ctrl+R`/`Ctrl+Shift+R` produced **0.0 %** change aft
 
 **Correction to `REPORT.md` D4.** The first run recorded that "the field still shows its focus outline after
 Enter". That was a **misread**: the mouse pointer was still hovering over the field, which gives a grey hover
-border. The real focus state (teal outline + caret) appears only while typing — see
-`screenshots/19-page-field-states-typing-enter-esc.png` (typing | after Enter | after Esc, with the pointer still
-over the field). So there is **no** Windows-specific focus residue; D4 was the shared bug the Linux session fixed.
+border. The real focus state (teal outline + caret) appears only while typing — see the
+re-verification capture (typing | after Enter | after Esc, with the pointer still over the field; the image was
+removed from the repository). So there is **no** Windows-specific focus residue; D4 was the shared bug the Linux session fixed.
 
 Not exercised: `Ctrl+E` immediately after Enter (needs a selection, and selecting requires a click on the
 document, which is the very thing D4 is about) — covered on Linux by the integration test.

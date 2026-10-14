@@ -1,9 +1,10 @@
 # DNDReader — Windows Implementation Plan (WebView2)
 
-> **Status:** approved 2026-10-14. **No Windows code exists** — there is no `windows/` directory,
-> no CI workflow, and no Windows dependency in `pubspec.yaml`. The next action is **W1**.
-> This document is the source of truth for the Windows port. `docs/implementation-plan.md` remains
-> the source of truth for Linux and is **not** superseded by this one.
+> **Status:** approved 2026-10-14 and **implemented** (W1–W6, then defects D1–D7 from a real-machine
+> verification). This document is the **plan of record**, kept as written; the tense below ("no Windows code
+> exists", "the next action is W1") describes the day it was approved. What was actually built, decided and
+> verified is in `docs/completion-report-windows.md` and `docs/windows-verification/REPORT.md`.
+> `docs/implementation-plan.md` remains the source of truth for Linux and is **not** superseded by this one.
 >
 > **Labelling convention, used throughout and required in every report this work produces:**
 > **verified** (observed in this project, with how it was observed stated), **read** (taken from
@@ -36,7 +37,7 @@ native runner seams, and packaging** — not in the shared UI. Port, don't re-au
 
 | Fact | Value |
 |---|---|
-| Path | `/home/ankit/Desktop/Projects/SaaS/DNDReader` |
+| Path | `<repo checkout>` |
 | Remote | `https://github.com/thisisankit27/DNDReader` — **public** |
 | Base commit | `main` = **`f0bc24d`** ("Merge feat/mvp-reader: Ubuntu MVP v0.1.5") |
 | Integration branch for this work | **`feat/windows-port`**, cut from `f0bc24d` |
@@ -45,7 +46,7 @@ native runner seams, and packaging** — not in the shared UI. Port, don't re-au
 | Flutter | 3.47.7 / Dart 3.13.5. **The SDK is not on `PATH`** — use `export PATH=$HOME/sdk/flutter/bin:$PATH` |
 | Platforms scaffolded | `linux` only (`.metadata` lists `root` and `linux`) |
 | Fork dependency | `webview_cef` pinned to `thisisankit27/webview_cef` @ `0970b4447cb667dc4a512ba5350a39a253d6d273` (public repo; **zero GitHub Actions runs ever**, so its inherited `test_windows_x64.yaml` has never executed) |
-| Local dev override | `pubspec_overrides.yaml` is **gitignored** and points `webview_cef` at `/home/ankit/scratch/upstream/webview_cef` (byte-identical to the pinned ref). It must not reach CI |
+| Local dev override | `pubspec_overrides.yaml` is **gitignored** and points `webview_cef` at `<local fork checkout>` (byte-identical to the pinned ref). It must not reach CI |
 
 **Read first:** `docs/completion-report.md` (what exists and how it was evidenced),
 `docs/implementation-plan.md` (the Ubuntu plan), `docs/progress.md` (~950 lines of per-milestone
@@ -318,7 +319,7 @@ all, and everything else depends on it. Do it first and do not start W2 until CI
    `windows: pluginClass: WebviewCefPluginCApi`, so a Windows build would download 326 MB of CEF,
    compile `libcef_dll_wrapper` from source, and ship CEF's binaries in the installer — **all
    unused**, because Windows takes the WebView2 path. Fix it in the fork:
-   - In `/home/ankit/scratch/upstream/webview_cef` (HEAD `0970b44`, clean, byte-identical to the
+   - In `<local fork checkout>` (HEAD `0970b44`, clean, byte-identical to the
      pin), create branch **`dndreader/windows`**.
    - Drop the `windows:` entry from `flutter.plugin.platforms`. Leave Linux and macOS untouched.
    - Record the change and its reason in the fork's `HARDENING.md`.

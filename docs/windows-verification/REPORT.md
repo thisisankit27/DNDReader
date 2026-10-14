@@ -9,7 +9,7 @@ the Windows port, or to review how the claims were evidenced. It assumes no memo
 - **Method:** the installed app driven with ordinary synthetic mouse/keyboard input, observed through screenshots,
   process/registry/event-log inspection. **No source was changed.** Only `test_fixtures/*.pdf` were opened.
 - **Labels:** **verified** = observed on a running app; **read** = from source/docs; **not verified**.
-- Detail log with every step: [RESULTS.md](RESULTS.md). Screenshots: [screenshots/](screenshots/) (curated, cropped).
+- Detail log with every step: [RESULTS.md](RESULTS.md). Screenshots taken during the run were **removed from the repository** before merge (they carried desktop context); every finding is stated in text with its measurements.
   Input/screenshot helper used: [tools/input-helpers.ps1](tools/input-helpers.ps1).
 
 ## 0. Status after the Windows fix session (read this first)
@@ -137,7 +137,7 @@ Each: what, how to reproduce, evidence, **leads** (read from source — hypothes
   **flaps** between the error overlay and the site's "Performing security verification… Verification successful"
   interstitial and finally the page. Pressing Back several times ends with **the Back arrow disabled while a
   page is displayed** (navigation history and the app's model out of sync). Reproduced twice.
-- **Evidence.** `screenshots/06`, `07`, `08`. No network fault existed (Google and the site loaded).
+- **Evidence.** (screenshot, since removed). No network fault existed (Google and the site loaded).
 - **Leads.** `controller.onLoadError` → `_onLoadError` in `search_web_view_windows.dart`; only
   `WebErrorStatus.operationCanceled` is filtered. A challenge redirect likely yields another status
   (e.g. connection-reset/redirect-loop class) that the session treats as a hard failure and doesn't clear when the
@@ -194,7 +194,7 @@ Each: what, how to reproduce, evidence, **leads** (read from source — hypothes
 
 - **Observed.** No `window-size` file → default 1100×760 logical → `GetWindowRect` `15,15 1650×1106` on a
   1920×1080 screen whose work area is 1034 px tall. ≈ 87 px of window sits under the taskbar; the lower part of
-  the document and a selection pill near the bottom are hidden (`screenshots/04`).
+  the document and a selection pill near the bottom are hidden ((screenshot, since removed)).
 - **Leads.** `windows/runner/main.cpp` passes the logical size straight to `Win32Window::Create`, which scales by
   the monitor DPI (`win32_window.cpp` ~L134–140); there is no clamp to the monitor **work area** after scaling.
   (The CI smoke test's `1044 760` was clamped only because the virtual display was small.)
@@ -218,9 +218,9 @@ remain (acceptable for user settings, but should be a decision, not an accident)
 
 | Risk | Result | Evidence |
 |---|---|---|
-| **Focus** (package-reported bouncing) | **Not reproduced.** Typing into the panel after a click works; click-document closes the panel (by design, `implementation-plan.md` L337) and arrows scroll the document; `Esc` after clicking in the panel closes it; shortcuts work immediately after close. The one focus defect is D4. | `screenshots/09`, `10` |
+| **Focus** (package-reported bouncing) | **Not reproduced.** Typing into the panel after a click works; click-document closes the panel (by design, `implementation-plan.md` L337) and arrows scroll the document; `Esc` after clicking in the panel closes it; shortcuts work immediately after close. The one focus defect is D4. | (screenshot, since removed) |
 | **Wheel constant** (`1.0` derived, not measured) | **Measured:** `WheelScrollLines = 3`; one notch = **171 physical px = 114 logical px at 150 % scale**, identical in 6/6 samples (≈ 14 % above the ~100 px target). Not measured at 100 % scale; a 5-notch burst could not be matched reliably. `Ctrl`+wheel zoom works and restores exactly. | method: pixel cross-correlation of consecutive screenshots |
-| **Full screen** (synthesised `fullscreenChanged`) | **Works.** `F11`↔`Esc` ×4, `F11` toggle, header icon in/out ×2, icon-in/`Esc`-out, `F11`-in/icon-out: 10/10; each restore returned exactly `15,15 1650×1106`. Full screen covers the taskbar; the panel renders in full screen; `Esc` leaves full screen first, then the panel (matches `_escape` in `reader_screen.dart`). | `screenshots/12`, `13` |
+| **Full screen** (synthesised `fullscreenChanged`) | **Works.** `F11`↔`Esc` ×4, `F11` toggle, header icon in/out ×2, icon-in/`Esc`-out, `F11`-in/icon-out: 10/10; each restore returned exactly `15,15 1650×1106`. Full screen covers the taskbar; the panel renders in full screen; `Esc` leaves full screen first, then the panel (matches `_escape` in `reader_screen.dart`). | (screenshot, since removed) |
 
 ## 4. Other verified facts
 

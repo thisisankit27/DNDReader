@@ -15,14 +15,13 @@ No AI engine of our own. No API keys. No accounts. No backend.
 
 ## Status
 
-**Ubuntu MVP complete (v0.1.5 on `main`); `feat/windows-port` carries the Windows port and is versioned 0.2.0. No release has been published.** It builds, runs and
-is tested on Ubuntu 26.04 only. What has actually been observed — and what has not — is in
+**Version 0.2.0: Ubuntu and Windows. No release has been published.** The Ubuntu build is verified on Ubuntu 26.04 only (installed `.deb` and AppArmor profile confirmed by the owner); the Windows build is described below. What has actually been observed — and what has not — is in
 [docs/progress.md](docs/progress.md); the plan is in [docs/implementation-plan.md](docs/implementation-plan.md).
 
 | Platform | State |
 |---|---|
 | Ubuntu / Linux | **Built and verified** on Ubuntu 26.04 (x86-64) — see the "not verified" list in progress.md |
-| Windows 10 1809+ / 11 (x64) | **Compiles, packages and starts in CI; not otherwise run.** The branch `feat/windows-port` builds on GitHub Actions `windows-latest`, its installer installs and uninstalls silently there, and the app started and stayed up for 15 s. Rendering, the search panel, input and focus have **not been observed** — that pass is the owner's. See [docs/completion-report-windows.md](docs/completion-report-windows.md) |
+| Windows 10 1809+ / 11 (x64) | **Built in CI and hand-verified on one Windows 10 22H2 machine** (150 % display): install, read, select, Find meaning, search panel, full screen, quit and temp-data cleanup, uninstall — after seven defects were found and fixed. **Not verified:** Windows 11 (incl. the capture border), a machine without the WebView2 Runtime, other display scales, per-machine install. The installer is **unsigned** (Windows shows "Unknown publisher"). See [docs/windows-owner-test.md](docs/windows-owner-test.md) and [docs/windows-verification/REPORT.md](docs/windows-verification/REPORT.md) |
 | Android | Architecturally supported — **not built, not tested** |
 | iOS, macOS | Architecturally supported — **not built, not tested** |
 

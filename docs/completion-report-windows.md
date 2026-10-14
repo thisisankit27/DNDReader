@@ -4,6 +4,12 @@ Written for: the owner, who will install the CI installer on Windows 10 and judg
 independent reviewer judging how the claims below were evidenced. Every claim is labelled **verified**
 (observed, with how), **read** (from source or documentation, not run) or **not verified**.
 
+> **Update (after this report was written).** A real-machine verification on Windows 10 found seven defects
+> (quit crash and leftover browsing data, spurious errors after a challenge page, shortcuts dead after the page
+> field, window taller than the work area, icon/publisher, uninstall leftovers); all are fixed and re-verified —
+> see `docs/windows-verification/REPORT.md` and `ORCHESTRATOR-HANDOFF.md`. §7's "not verified" list below is
+> therefore partly superseded; what is still unverified is listed in `docs/windows-owner-test.md`.
+>
 > **Read this first.** A green CI run proves the app **compiles**, its **unit tests pass**, and — here — that
 > its installer installs and uninstalls and the process **starts and stays up for 15 s on a hosted runner**.
 > It does **not** prove the app renders, that the search panel loads Google, that input or focus work, or that
