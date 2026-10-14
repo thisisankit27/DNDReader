@@ -179,6 +179,24 @@ class _ReaderScreenState extends State<ReaderScreen> {
     if (mounted && !_readerFocus.hasFocus) _readerFocus.requestFocus();
   }
 
+  /// The page field is done (Enter, Esc, or a tap elsewhere): put keyboard
+  /// focus back on the document.
+  ///
+  /// [_focusReader] is not enough here. The field sits under [_readerFocus], so
+  /// while it is focused `_readerFocus.hasFocus` is true and that call does
+  /// nothing; the field's own `unfocus()` then hands primary focus to the route's
+  /// focus scope, which is *above* the shortcuts, so Ctrl+R/E/T and the arrow
+  /// keys went nowhere until the document was clicked. Focusing the viewer's own
+  /// node is what a click on the document does.
+  void _onPageEditDone() {
+    if (!mounted) return;
+    if (_path != null && !_failed && _controller.isReady) {
+      _controller.requestFocus();
+    } else {
+      _readerFocus.requestFocus();
+    }
+  }
+
   void _goToPage(int page) {
     if (!_controller.isReady) return;
     _controller.goToPage(pageNumber: page);
@@ -443,7 +461,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 pageNumber: _pageNumber,
                 pageCount: _headerPageCount,
                 onGoToPage: _goToPage,
-                onPageEditDone: _focusReader,
+                onPageEditDone: _onPageEditDone,
                 onRotate: hasDocument && _controller.isReady ? _rotate : null,
                 fullscreen: _window.fullscreen,
                 onToggleFullscreen: _window.toggleFullscreen,
