@@ -142,6 +142,8 @@ void main() {
       await tester.pump();
       expect(search.visible, isFalse);
       expect(action.available, isTrue);
+      // Closing returns OS-level focus from the native webview (Windows).
+      expect(view.focusReleases, 1);
 
       // Second Esc dismisses the action.
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);

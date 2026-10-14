@@ -4,6 +4,7 @@
 
 #include "flutter_window.h"
 #include "utils.h"
+#include "window_settings.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
@@ -26,8 +27,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1280, 720);
-  if (!window.Create(L"dndreader", origin, size)) {
+  // The remembered size (logical pixels; Create scales it for the monitor).
+  const WindowSize saved = LoadWindowSize();
+  Win32Window::Size size(saved.width, saved.height);
+  if (!window.Create(L"DNDReader", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

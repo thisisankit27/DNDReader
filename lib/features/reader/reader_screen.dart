@@ -160,7 +160,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   void _onSearchChanged() {
     final visible = _search.visible;
-    if (_searchWasVisible && !visible) _focusReader();
+    if (_searchWasVisible && !visible) {
+      // The native webview may still hold OS focus while hidden.
+      unawaited(_search.webView?.releaseFocus() ?? Future<void>.value());
+      _focusReader();
+    }
     _searchWasVisible = visible;
   }
 

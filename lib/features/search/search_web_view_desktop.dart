@@ -72,6 +72,10 @@ class CefSearchWebView implements SearchWebView {
   @override
   Future<void> reload() async => _controller?.reload();
 
+  // The CEF plugin's focus is handled by Flutter's own focus tree.
+  @override
+  Future<void> releaseFocus() async {}
+
   @override
   Widget get widget {
     final controller = _controller;
