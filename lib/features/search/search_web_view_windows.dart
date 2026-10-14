@@ -188,6 +188,15 @@ class Webview2SearchWebView implements SearchWebView {
   Future<void> _shutdown() => _teardown ??= _runShutdown();
 
   Future<void> _runShutdown() async {
+    final watch = Stopwatch()..start();
+    void step(String what) {
+      assert(() {
+        debugPrint('[search] shutdown ${watch.elapsedMilliseconds} ms: $what');
+        return true;
+      }());
+    }
+
+    step('start');
     AppShutdown.unregister(_shutdown);
     _exitListener?.dispose();
     _exitListener = null;
@@ -200,13 +209,17 @@ class Webview2SearchWebView implements SearchWebView {
     if (controller != null) {
       try {
         await controller.clearCookies();
+        step('cookies cleared');
         await controller.clearCache();
+        step('cache cleared');
       } catch (e) {
         debugPrint('[search] clearing search data failed: $e');
       }
       await controller.dispose();
+      step('controller disposed');
     }
     final gone = await _profiles.delete();
+    step('profile deleted: $gone');
     if (!gone) {
       debugPrint(
         '[search] profile folder not removed; the next launch will sweep it',
