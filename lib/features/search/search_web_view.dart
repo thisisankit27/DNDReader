@@ -66,6 +66,11 @@ abstract class SearchWebView {
     void Function(String url, String errorText, int errorCode)? callback,
   );
 
+  /// The browser's own history state, for engines that report it: whether Back
+  /// can go anywhere. Engines that do not report it never call this, and the
+  /// session then relies on its own record of visited pages.
+  set onHistoryChanged(void Function(bool canGoBack)? callback);
+
   void dispose();
 }
 
@@ -123,6 +128,8 @@ class _UnsupportedSearchWebView implements SearchWebView {
   set onLoadError(
     void Function(String url, String errorText, int errorCode)? callback,
   ) {}
+  @override
+  set onHistoryChanged(void Function(bool canGoBack)? callback) {}
   @override
   void dispose() {}
 }

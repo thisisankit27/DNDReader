@@ -24,6 +24,14 @@ class FakeSearchWebView implements SearchWebView {
   @override
   set onLoadEnd(void Function(String url)? callback) => _onEnd = callback;
 
+  void Function(bool canGoBack)? _onHistory;
+
+  @override
+  set onHistoryChanged(void Function(bool canGoBack)? callback) =>
+      _onHistory = callback;
+
+  void emitHistory({required bool canGoBack}) => _onHistory?.call(canGoBack);
+
   @override
   set onLoadError(
     void Function(String url, String errorText, int errorCode)? callback,
