@@ -2,12 +2,16 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../models/app_settings.dart';
+
 /// Overflow menu: recent documents, theme, shortcuts, about.
 class ReaderMenu extends StatelessWidget {
   const ReaderMenu({
     super.key,
     required this.themeMode,
     required this.onThemeMode,
+    required this.selectionHighlight,
+    required this.onSelectionHighlight,
     required this.recents,
     required this.onOpenRecent,
     required this.onShowShortcuts,
@@ -16,6 +20,8 @@ class ReaderMenu extends StatelessWidget {
 
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeMode;
+  final SelectionHighlight selectionHighlight;
+  final ValueChanged<SelectionHighlight> onSelectionHighlight;
   final List<String> recents;
   final ValueChanged<String> onOpenRecent;
   final VoidCallback onShowShortcuts;
@@ -65,6 +71,39 @@ class ReaderMenu extends StatelessWidget {
               ),
           ],
           child: const Text('Theme'),
+        ),
+        SubmenuButton(
+          menuChildren: [
+            for (final h in SelectionHighlight.values)
+              RadioMenuButton<SelectionHighlight>(
+                value: h,
+                groupValue: selectionHighlight,
+                onChanged: (v) {
+                  if (v != null) onSelectionHighlight(v);
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // As it looks over the (always white) page, not over the
+                    // dark menu, where the translucent colour would mislead.
+                    Container(
+                      width: 28,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: Color.alphaBlend(h.overlay, Colors.white),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(h.label),
+                  ],
+                ),
+              ),
+          ],
+          child: const Text('Selection colour'),
         ),
         MenuItemButton(
           onPressed: onShowShortcuts,

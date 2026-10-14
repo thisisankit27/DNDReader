@@ -14,6 +14,31 @@ void main() {
     expect(s.lastDocument, isNull);
     expect(s.lastPage, isNull);
     expect(s.recents, isEmpty);
+    expect(s.selectionHighlight, SelectionHighlight.skyBlue);
+  });
+
+  test(
+    'selection highlight persists and a bad stored value falls back',
+    () async {
+      final first = await SettingsService.load();
+      await first.setSelectionHighlight(SelectionHighlight.orange);
+      expect(
+        (await SettingsService.load()).settings.selectionHighlight,
+        SelectionHighlight.orange,
+      );
+      SharedPreferences.setMockInitialValues({'selectionHighlight': 'green!'});
+      expect(
+        (await SettingsService.load()).settings.selectionHighlight,
+        SelectionHighlight.skyBlue,
+      );
+    },
+  );
+
+  test('forgetting the last document keeps the highlight choice', () async {
+    final svc = await SettingsService.load();
+    await svc.setSelectionHighlight(SelectionHighlight.pink);
+    await svc.clearLastPosition();
+    expect(svc.settings.selectionHighlight, SelectionHighlight.pink);
   });
 
   test('round-trips every field across a "restart"', () async {

@@ -36,6 +36,7 @@ README should be read as a claim that a platform other than Ubuntu works.
 - Select text → **Find meaning** (or `Ctrl+E`) → Google Search results in a side panel on the right;
   `Esc` closes it and you are exactly where you were.
 - Remembers theme, zoom, last document and page, recent documents and window size.
+- Selection highlight colour is your choice (Menu → Selection colour): sky blue (default), yellow, orange, pink or grey — chosen from the colour-blind-safe Okabe–Ito palette rather than the theme's default.
 - Light/dark/system theme, keyboard shortcuts (Menu → Keyboard shortcuts).
 
 ## How it works
@@ -78,7 +79,7 @@ flutter test
 flutter build linux --release
 
 packaging/linux/build-deb.sh          # → dist/dndreader_<ver>-1_amd64.deb
-sudo apt install ./dist/dndreader_0.1.4-1_amd64.deb
+sudo apt install ./dist/dndreader_0.1.5-1_amd64.deb
 ```
 
 The `.deb` is built for the Ubuntu release it is built on (its `Depends` are derived from the
