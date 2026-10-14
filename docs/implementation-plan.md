@@ -4,6 +4,7 @@
 > investigation (both recorded in `docs/progress.md`). Implementation proceeds on `feat/mvp-reader`.
 > **Milestone order (amended):** M1 → M2 → M3 (§5.1.1 gates) → **M0b hardened fork** → M4 → M5 → M6.
 > Progress and observations belong in `docs/progress.md`.
+> **Windows:** the Windows port has its own plan — see `docs/windows-implementation-plan.md`; this document remains the source of truth for Linux.
 
 ## Context
 
