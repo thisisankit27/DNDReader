@@ -86,6 +86,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   final WindowService _window = WindowService();
 
+  /// True while the right-click menu is showing; the pill steps aside for it.
+  final ValueNotifier<bool> _contextMenuOpen = ValueNotifier(false);
+
   /// The reader's own focus. The embedded browser takes primary focus when it
   /// is clicked and, while it holds it, the native layer hands it every key.
   /// Closing the panel or finishing an edit returns focus here.
@@ -203,6 +206,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _search.removeListener(_onSearchChanged);
     _window.removeListener(_onWindowChanged);
     _window.dispose();
+    _contextMenuOpen.dispose();
     _readerFocus.dispose();
     _persistTimer?.cancel();
     _controller.removeListener(_onViewerTransform);
@@ -352,6 +356,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
         return PdfView(
           key: ValueKey('$_path#$_openSerial'),
           contentInsets: insets,
+          contextMenuOpen: _contextMenuOpen,
+          canFindMeaning: () => _action.available,
+          onFindMeaning: _findMeaning,
           documentRef: _documentRef!,
           controller: _controller,
           onPageChanged: (page) => setState(() => _pageNumber = page),
@@ -477,9 +484,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
                               if (hasDocument)
                                 Positioned.fill(
                                   child: ListenableBuilder(
-                                    listenable: _action,
+                                    listenable: Listenable.merge([
+                                      _action,
+                                      _contextMenuOpen,
+                                    ]),
                                     builder: (context, _) {
-                                      if (!_action.available) {
+                                      if (!_action.available ||
+                                          _contextMenuOpen.value) {
                                         return const SizedBox.shrink();
                                       }
                                       return SelectionPill(
