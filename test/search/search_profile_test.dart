@@ -26,6 +26,8 @@ SweepVerdict _decide({
 );
 
 void main() {
+  _launchSweepTests();
+
   group('isOwnedProfileName', () {
     test('accepts exactly dndreader-search-<digits>', () {
       expect(isOwnedProfileName('dndreader-search-1'), isTrue);
@@ -331,6 +333,101 @@ void main() {
       final s = store(pid: 200);
       expect(await s.delete(attempts: 1), isFalse);
       expect(File('${outside.path}/precious.txt').existsSync(), isTrue);
+    });
+  });
+}
+
+void _launchSweepTests() {
+  group('sweepStaleProfilesAtLaunch (D2)', () {
+    late Directory root;
+    late Directory temp;
+    late Directory outside;
+
+    setUp(() {
+      root = Directory.systemTemp.createTempSync('dndreader-launch-');
+      temp = Directory('${root.path}/temp')..createSync();
+      outside = Directory('${root.path}/outside')..createSync();
+    });
+
+    tearDown(() => root.deleteSync(recursive: true));
+
+    // A leftover of a crashed run: its lock file is still there, but no process
+    // holds it. (The lock-less case is covered by the age rule's own tests.)
+    Directory leftover(String name) {
+      final d = Directory('${temp.path}/$name')..createSync();
+      File('${d.path}/$kSearchProfileLockName').writeAsStringSync('');
+      File('${d.path}/Cookies').writeAsStringSync('x');
+      return d;
+    }
+
+    test(
+      'does nothing when not enabled (every non-Windows platform)',
+      () async {
+        final d = leftover('dndreader-search-31');
+        expect(
+          await sweepStaleProfilesAtLaunch(
+            tempDir: temp,
+            ownPid: 1,
+            enabled: false,
+          ),
+          0,
+        );
+        expect(d.existsSync(), isTrue);
+      },
+    );
+
+    test(
+      'removes a crashed run\'s folder at launch, off the UI isolate',
+      () async {
+        final d = leftover('dndreader-search-32');
+        final removed = await sweepStaleProfilesAtLaunch(
+          tempDir: temp,
+          ownPid: 1,
+          enabled: true,
+        );
+        expect(removed, 1);
+        expect(d.existsSync(), isFalse);
+        expect(temp.existsSync(), isTrue);
+      },
+    );
+
+    test('keeps every guard: names, own pid, files, symlinks, new lock-less folders', () async {
+      final stale = leftover('dndreader-search-40');
+      final lookalike = leftover('dndreader-search-40x');
+      final other = leftover('Documents');
+      final own = leftover('dndreader-search-777');
+      final file = File('${temp.path}/dndreader-search-41')
+        ..writeAsStringSync('a file');
+      final fresh = Directory('${temp.path}/dndreader-search-42')..createSync();
+      File('${outside.path}/precious').writeAsStringSync('keep');
+      Link('${temp.path}/dndreader-search-43').createSync(outside.path);
+
+      final removed = await sweepStaleProfilesAtLaunch(
+        tempDir: temp,
+        ownPid: 777,
+        enabled: true,
+      );
+
+      expect(removed, 1);
+      expect(stale.existsSync(), isFalse);
+      expect(lookalike.existsSync(), isTrue);
+      expect(other.existsSync(), isTrue);
+      expect(own.existsSync(), isTrue);
+      expect(file.existsSync(), isTrue);
+      expect(fresh.existsSync(), isTrue);
+      expect(File('${outside.path}/precious').existsSync(), isTrue);
+      expect(Link('${temp.path}/dndreader-search-43').existsSync(), isTrue);
+    });
+
+    test('a missing temp directory is not an error', () async {
+      expect(
+        await sweepStaleProfilesAtLaunch(
+          tempDir: Directory('${root.path}/nope'),
+          ownPid: 1,
+          enabled: true,
+        ),
+        0,
+      );
     });
   });
 }

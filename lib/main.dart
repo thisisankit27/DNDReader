@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 
 import 'app.dart';
 import 'dev/dev_capture.dart';
+import 'features/search/search_profile.dart';
 import 'services/settings_service.dart';
 
 Future<void> main(List<String> args) async {
@@ -14,6 +16,9 @@ Future<void> main(List<String> args) async {
       child: DndReaderApp(settings: settings, initialPath: _pdfFromArgs(args)),
     ),
   );
+  // After the first frame is scheduled and off the UI isolate: clears a search
+  // profile a crashed run left behind (Windows only; guarded, never throws).
+  unawaited(sweepStaleProfilesAtLaunch());
 }
 
 /// The first command-line argument that names an existing `.pdf` file
