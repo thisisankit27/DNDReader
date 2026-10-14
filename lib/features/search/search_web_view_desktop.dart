@@ -23,6 +23,10 @@ class CefSearchWebView implements SearchWebView {
   @override
   set onLoadEnd(void Function(String url)? callback) => _onLoadEnd = callback;
 
+  // CEF is not asked for its history state; the session keeps its own record.
+  @override
+  set onHistoryChanged(void Function(bool canGoBack)? callback) {}
+
   @override
   set onLoadError(
     void Function(String url, String errorText, int errorCode)? callback,

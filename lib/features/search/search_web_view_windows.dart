@@ -30,6 +30,11 @@ class Webview2SearchWebView implements SearchWebView {
   void Function(String url)? _onUrlChanged;
   void Function(String url)? _onLoadEnd;
   void Function(String url, String errorText, int errorCode)? _onLoadError;
+  void Function(bool canGoBack)? _onHistoryChanged;
+
+  /// WebView2 raises NavigationCompleted for failures as well, after the error.
+  /// That trailing completion is not "the page loaded", so it is not forwarded.
+  bool _navigationFailed = false;
 
   @override
   set onUrlChanged(void Function(String url)? callback) =>
@@ -42,6 +47,10 @@ class Webview2SearchWebView implements SearchWebView {
   set onLoadError(
     void Function(String url, String errorText, int errorCode)? callback,
   ) => _onLoadError = callback;
+
+  @override
+  set onHistoryChanged(void Function(bool canGoBack)? callback) =>
+      _onHistoryChanged = callback;
 
   @override
   Future<void> start(Uri initialUrl) async {
@@ -93,6 +102,10 @@ class Webview2SearchWebView implements SearchWebView {
       ..add(
         controller.loadingState.listen((state) {
           if (state == LoadingState.navigationCompleted) {
+            if (_navigationFailed) {
+              _navigationFailed = false; // reported by onLoadError instead
+              return;
+            }
             _onLoadEnd?.call(_lastUrl);
           }
         }),
@@ -102,9 +115,17 @@ class Webview2SearchWebView implements SearchWebView {
           // A navigation superseded by a newer one (or turned into a download)
           // is reported as "cancelled"; it is not a failure the user needs to
           // see, and the newer navigation reports its own outcome.
+          _navigationFailed = true; // its NavigationCompleted is not a success
           if (status == WebErrorStatus.operationCanceled) return;
           _onLoadError?.call(_lastUrl, status.name, status.index);
         }),
+      )
+      ..add(
+        // Back follows the webview's own history, not a list kept in Dart: a
+        // challenge redirect replaces entries, which a Dart-side list cannot see.
+        controller.historyChanged.listen(
+          (h) => _onHistoryChanged?.call(h.canGoBack),
+        ),
       );
 
     // Open target=_blank results in the panel, as the CEF path does, rather than

@@ -14,6 +14,7 @@ void main() {
   SearchSession make({
     FakeSearchWebView? webView,
     Duration timeout = const Duration(seconds: 20),
+    Duration errorGrace = const Duration(seconds: 5),
   }) {
     view = webView ?? FakeSearchWebView();
     opened = [];
@@ -28,6 +29,7 @@ void main() {
         return true;
       },
       loadTimeout: timeout,
+      errorGrace: errorGrace,
     );
   }
 
@@ -225,6 +227,128 @@ void main() {
       view.emitUrl('https://www.nhlbi.nih.gov/health/x');
       await s.openInBrowser();
       expect(opened.single.toString(), 'https://www.nhlbi.nih.gov/health/x');
+    });
+  });
+
+  group('challenge pages and browser history (Windows, D3)', () {
+    const gated =
+        'https://dictionary.cambridge.org/dictionary/english/efficient';
+    const challenge = '$gated?__cf_chl_rt_tk=abc';
+
+    Future<SearchSession> onResultsPage() async {
+      final s = make(errorGrace: const Duration(milliseconds: 60));
+      addTearDown(s.dispose);
+      await s.search(results, 'efficient');
+      view.emitUrl(results.toString());
+      view.emitLoadEnd(results.toString());
+      expect(s.phase, SearchPhase.loaded);
+      return s;
+    }
+
+    test('an aborted challenge navigation followed by the page loading '
+        'never shows a failure', () async {
+      final s = await onResultsPage();
+      view.emitUrl(gated);
+      view.emitUrl(challenge);
+      view.emitUrl(gated);
+      view.emitLoadError(gated, text: 'unknown', code: 0);
+      expect(s.phase, SearchPhase.loading, reason: 'the error is held');
+      view.emitLoadEnd(gated);
+      expect(s.phase, SearchPhase.loaded);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      expect(s.phase, SearchPhase.loaded, reason: 'the held error is dropped');
+    });
+
+    test(
+      'an ambiguous error with no recovery is shown after the grace',
+      () async {
+        final s = await onResultsPage();
+        view.emitUrl(gated);
+        view.emitLoadError(gated, text: 'unknown', code: 0);
+        expect(s.phase, SearchPhase.loading);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        expect(s.phase, SearchPhase.failed);
+      },
+    );
+
+    test('a definite network error fails immediately', () async {
+      final s = await onResultsPage();
+      view.emitUrl(gated);
+      view.emitLoadError(gated, text: 'hostNameNotResolved', code: 13);
+      expect(s.phase, SearchPhase.failed);
+    });
+
+    test(
+      'a page that finishes loading after a failure recovers from it',
+      () async {
+        final s = await onResultsPage();
+        view.emitUrl(gated);
+        view.emitLoadError(gated, text: 'hostNameNotResolved', code: 13);
+        expect(s.phase, SearchPhase.failed);
+        view.emitLoadEnd(gated);
+        expect(s.phase, SearchPhase.loaded);
+      },
+    );
+
+    test('a browser error page still fails, even after a held error', () async {
+      final s = await onResultsPage();
+      view.emitUrl(gated);
+      view.emitLoadError(gated, text: 'unknown', code: 0);
+      view.emitLoadEnd('chrome-error://chromewebdata/');
+      expect(s.phase, SearchPhase.failed);
+    });
+
+    test('challenge hops are not history entries', () async {
+      final s = await onResultsPage();
+      view.emitUrl(gated);
+      view.emitUrl(challenge);
+      view.emitUrl(gated);
+      view.emitLoadEnd(gated);
+      expect(s.currentUrl, gated);
+      expect(s.canGoBack, isTrue);
+      await s.back();
+      // One press returns to the results, not to an intermediate hop.
+      expect(s.currentUrl, results.toString());
+      expect(s.canGoBack, isFalse);
+    });
+
+    test('Back asks the browser when it has the entry', () async {
+      final s = await onResultsPage();
+      view.emitUrl(gated);
+      view.emitHistory(canGoBack: true);
+      await s.back();
+      expect(view.backs, 1);
+      expect(view.loaded, isEmpty);
+      // The URL the browser lands on arrives as a normal URL change, and is
+      // the same entry as the one we stepped back to.
+      view.emitUrl(results.toString());
+      expect(s.currentUrl, results.toString());
+      expect(s.canGoBack, isFalse);
+    });
+
+    test(
+      'Back reloads our previous page when the browser replaced the entry',
+      () async {
+        final s = await onResultsPage();
+        view.emitUrl(gated);
+        view.emitHistory(canGoBack: false); // the result link replaced the page
+        expect(s.canGoBack, isTrue);
+        await s.back();
+        expect(view.backs, 0);
+        expect(view.loaded, [results]);
+        expect(s.currentUrl, results.toString());
+      },
+    );
+
+    test('an engine that reports no history just gets goBack', () async {
+      final s = await onResultsPage();
+      view.emitUrl(gated);
+      expect(s.canGoBack, isTrue);
+      await s.back();
+      expect(view.backs, 1);
+      expect(view.loaded, isEmpty);
+      expect(s.currentUrl, results.toString());
+      expect(s.canGoBack, isFalse);
     });
   });
 
