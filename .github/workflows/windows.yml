@@ -88,6 +88,17 @@ jobs:
         shell: bash
         run: where nuget || echo "nuget not on PATH"
 
+      # Pure runner logic (window placement), compiled with the MSVC the runner uses.
+      - name: Runner geometry unit test
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installerswhere.exe" -latest -products * -property installationPath
+          $bat = Join-Path $vs 'VC\Auxiliary\Buildcvars64.bat'
+          $out = Join-Path $env:RUNNER_TEMP 'geometry-test'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          cmd /c "`"$bat`" >nul && cl /nologo /EHsc /std:c++17 /W4 /WX /I windowsunner /Fo`"$out\`" /Fe`"$out\geometry.exe`" windowsunner	est\window_geometry_test.cpp && `"$out\geometry.exe`""
+          if ($LASTEXITCODE -ne 0) { throw "window geometry test failed ($LASTEXITCODE)" }
+
       - name: Build
         run: flutter build windows --release
 

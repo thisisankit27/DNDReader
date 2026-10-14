@@ -4,6 +4,7 @@
 #include <flutter_windows.h>
 
 #include "resource.h"
+#include "window_geometry.h"
 
 namespace {
 
@@ -134,11 +135,24 @@ bool Win32Window::Create(const std::wstring& title,
   UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
   double scale_factor = dpi / 96.0;
 
-  HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
+  // The logical size scaled to this monitor can be larger than the monitor's
+  // work area (1100x760 is 1650x1140 at 150 %); fit it after scaling.
+  WindowPlacement placement = {
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
-      Scale(size.width, scale_factor), Scale(size.height, scale_factor),
-      nullptr, nullptr, GetModuleHandle(nullptr), this);
+      Scale(size.width, scale_factor), Scale(size.height, scale_factor)};
+  MONITORINFO monitor_info = {sizeof(monitor_info)};
+  if (GetMonitorInfo(monitor, &monitor_info)) {
+    const PhysicalRect work = {
+        monitor_info.rcWork.left, monitor_info.rcWork.top,
+        monitor_info.rcWork.right, monitor_info.rcWork.bottom};
+    placement = FitToWorkArea(origin.x, origin.y, size.width, size.height,
+                              scale_factor, work, Scale(10, scale_factor));
+  }
+
+  HWND window = CreateWindow(
+      window_class, title.c_str(), WS_OVERLAPPEDWINDOW, placement.x,
+      placement.y, placement.width, placement.height, nullptr, nullptr,
+      GetModuleHandle(nullptr), this);
 
   if (!window) {
     return false;
