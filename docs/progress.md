@@ -856,3 +856,42 @@ Three requests:
 - **Touchpad**: pan/zoom gestures bypass `scrollByMouseWheel`; their speed is unchanged and unjudged.
 - Scrollbar thumb drag at the document extremes with very large documents (only the 3-page fixtures were driven).
 - No widget test for `DocumentScrollbars` (needs a live pdfrx controller); covered by the driven run above.
+
+## Post-MVP: Ctrl+wheel zoom, rotate, full screen, page jump (2026-10-14, branch `feat/m8-rotate-fullscreen-pagejump`, v0.1.2)
+
+Owner feedback: Ctrl+scroll zooms only sometimes; wanted rotate, a full-screen button beside the zoom buttons,
+an editable page number, and Esc to leave full screen.
+
+### Ctrl+scroll — cause and fix
+- **Cause (read from source, observed in the app):** the runner connected the plugin's `processKeyEventForCEF` to
+  GTK's key events. While the embedded browser's Flutter focus node holds primary focus the plugin returns TRUE for
+  *every* key, so Flutter never saw Ctrl go down and `HardwareKeyboard.isControlPressed` stayed false (pdfrx zooms
+  on Ctrl+wheel only when it is true). The browser took primary focus on a click in the panel and **kept it after the
+  panel closed and after clicking the document** (observed: focus chain 14 → 16 and it stayed) — hence "sometimes".
+- **Fix:** (1) closing the panel returns focus to the reader, and the hidden panel is wrapped in `ExcludeFocus`;
+  (2) `linux/runner/my_application.cc`: modifier keys are passed to the browser *and* left for Flutter
+  (`key_event_cb`). Other keys behave as before.
+- **Verified:** after clicking into the panel and closing it, primary focus is `reader` (was the browser's node).
+- **Not verified:** the GTK key path itself — OS-level input does not reach this app under XWayland here, so
+  "Ctrl is now seen while the browser has focus" and a real wheel+Ctrl run are **unobserved**; pdfrx's own
+  Ctrl+wheel handling was not changed. Touchpad two-finger scroll is delivered as a pan, not a wheel event, and
+  does not zoom with Ctrl (pinch does) — unchanged, and a possible second cause on a touchpad.
+
+### Features
+- **Rotate:** header button, `Ctrl+R` clockwise, `Ctrl+Shift+R` counter-clockwise. Pages are replaced with rotated
+  proxies (`document.pages = …`), so the viewer re-lays out; text selection and the pill follow (checked: "the" on a
+  rotated page selects, the pill sits under it). A view setting only: not written to the file, not remembered.
+  Outline destinations that carry an exact x/y position were not checked on rotated pages.
+- **Full screen:** button next to the zoom buttons, `F11`; `Esc` leaves it first. Implemented as a tiny
+  `dndreader/window` channel in the runner (no new dependency). Window size is not saved while full screen.
+- **Page number:** the header shows an editable field plus `/ N`. Enter jumps (clamped to 1..N), Esc or clicking
+  away restores the real page, non-digits are rejected.
+
+### Verified (how)
+- `dart format`, `flutter analyze`, `flutter test` (111 tests; 9 new header tests: jump, clamp, empty, follow, buttons).
+- Driven in the debug build: rotation changed the viewport and rendered correctly (screenshots
+  `~/scratch/evidence/m8_*.png`); F11 took the viewer from 1100×708 to 1536×812 and Esc back; saved window size
+  stayed `1100 760`; page field takes and releases focus.
+- **Not verified:** typing digits into the page field in the running app (the harness cannot feed the text-input
+  channel; covered by widget tests); full screen on X11 or other window managers; narrow-window header (<560 px)
+  was checked only by the existing no-overflow test.

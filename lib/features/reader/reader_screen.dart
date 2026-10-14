@@ -8,6 +8,7 @@ import 'package:pdfrx/pdfrx.dart';
 import '../../dev/dev_harness.dart';
 import '../../dev/selection_debug.dart';
 import '../../services/pdf_picker.dart';
+import '../../services/window_service.dart';
 import 'document_scrollbars.dart';
 import 'empty_state.dart';
 import 'open_failure.dart';
@@ -83,6 +84,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
   late final SettingsService _settings =
       widget.settings ?? SettingsService.inMemory();
 
+  final WindowService _window = WindowService();
+
+  /// The reader's own focus. The embedded browser takes primary focus when it
+  /// is clicked and, while it holds it, the native layer hands it every key.
+  /// Closing the panel or finishing an edit returns focus here.
+  final FocusNode _readerFocus = FocusNode(debugLabel: 'reader');
+
   int? _initialPage;
   Timer? _persistTimer;
   double? _persistedZoom;
@@ -90,6 +98,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void initState() {
     super.initState();
+    _search.addListener(_onSearchChanged);
+    _window.addListener(_onWindowChanged);
     final initial = widget.initialPath;
     if (initial != null) {
       _path = initial;
@@ -143,6 +153,45 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
+  bool _searchWasVisible = false;
+
+  void _onSearchChanged() {
+    final visible = _search.visible;
+    if (_searchWasVisible && !visible) _focusReader();
+    _searchWasVisible = visible;
+  }
+
+  void _onWindowChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Takes primary focus back from the embedded browser (or the page field).
+  void _focusReader() {
+    if (mounted && !_readerFocus.hasFocus) _readerFocus.requestFocus();
+  }
+
+  void _goToPage(int page) {
+    if (!_controller.isReady) return;
+    _controller.goToPage(pageNumber: page);
+  }
+
+  /// Turns every page a quarter turn. The viewer re-lays itself out when the
+  /// document's pages change; rotation is a view setting, never written to the
+  /// file, and a document opened again starts upright.
+  void _rotate({bool clockwise = true}) {
+    if (!_controller.isReady || _failed) return;
+    final document = _controller.document;
+    document.pages = [
+      for (final page in document.pages)
+        clockwise ? page.rotatedCW90() : page.rotatedCCW90(),
+    ];
+    // The old zoom was chosen for the old orientation; refit once the viewer
+    // has laid the turned pages out.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _fitPage();
+    });
+  }
+
   void _fitPage() {
     if (!_controller.isReady) return;
     final matrix = _controller.calcMatrixForFit(pageNumber: _pageNumber ?? 1);
@@ -151,6 +200,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   @override
   void dispose() {
+    _search.removeListener(_onSearchChanged);
+    _window.removeListener(_onWindowChanged);
+    _window.dispose();
+    _readerFocus.dispose();
     _persistTimer?.cancel();
     _controller.removeListener(_onViewerTransform);
     if (widget.actionController == null) _action.dispose();
@@ -164,11 +217,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
     return path.split(Platform.pathSeparator).last;
   }
 
-  String? get _pageLabel {
-    final count = _pageCount;
-    if (_path == null || _failed || count == null) return null;
-    return '${_pageNumber ?? 1} / $count';
-  }
+  /// Page count of the open document; null when nothing is open.
+  int? get _headerPageCount => _path == null || _failed ? null : _pageCount;
 
   Future<void> _openPicker() async {
     final picked = await widget.pickPdf();
@@ -246,9 +296,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
-  /// Esc: close the search panel if it is open; otherwise hide the action and
-  /// drop the selection.
+  /// Esc: leave full screen if in it; otherwise close the search panel, then
+  /// the contents, then hide the action and drop the selection.
   void _escape() {
+    if (_window.fullscreen) {
+      _window.setFullscreen(false);
+      return;
+    }
     if (_search.visible) {
       _search.close();
       return;
@@ -330,6 +384,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
             _findMeaning,
         const SingleActivator(LogicalKeyboardKey.keyT, control: true):
             _toggleOutline,
+        const SingleActivator(LogicalKeyboardKey.keyR, control: true): _rotate,
+        const SingleActivator(
+          LogicalKeyboardKey.keyR,
+          control: true,
+          shift: true,
+        ): () =>
+            _rotate(clockwise: false),
+        const SingleActivator(LogicalKeyboardKey.f11): _window.toggleFullscreen,
         const SingleActivator(LogicalKeyboardKey.escape): _escape,
         const SingleActivator(LogicalKeyboardKey.equal, control: true): _zoomIn,
         const SingleActivator(
@@ -348,12 +410,19 @@ class _ReaderScreenState extends State<ReaderScreen> {
       },
       child: Focus(
         autofocus: true,
+        focusNode: _readerFocus,
         child: Scaffold(
           body: Column(
             children: [
               ReaderHeader(
                 title: _title,
-                pageLabel: _pageLabel,
+                pageNumber: _pageNumber,
+                pageCount: _headerPageCount,
+                onGoToPage: _goToPage,
+                onPageEditDone: _focusReader,
+                onRotate: hasDocument && _controller.isReady ? _rotate : null,
+                fullscreen: _window.fullscreen,
+                onToggleFullscreen: _window.toggleFullscreen,
                 onOpen: _openPicker,
                 onZoomIn: hasDocument && _controller.isReady
                     ? _controller.zoomUp
@@ -464,9 +533,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                   // alive) while the panel is closed.
                                   child: Offstage(
                                     offstage: !_search.visible,
-                                    child: SearchPanel(
-                                      session: _search,
-                                      onClose: _search.close,
+                                    // A hidden browser must not keep keyboard
+                                    // focus (it would swallow every key).
+                                    child: ExcludeFocus(
+                                      excluding: !_search.visible,
+                                      child: SearchPanel(
+                                        session: _search,
+                                        onClose: _search.close,
+                                      ),
                                     ),
                                   ),
                                 ),
