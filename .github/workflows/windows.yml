@@ -42,8 +42,9 @@ jobs:
 
       - name: Fork resolves from the pinned git ref
         run: |
-          grep -A6 '^  webview_cef:' pubspec.lock
-          grep -q 'source: git' <(grep -A6 '^  webview_cef:' pubspec.lock)
+          block=$(sed -n '/^  webview_cef:/,/^  [a-z_]*:$/p' pubspec.lock)
+          echo "$block"
+          grep -q 'source: git' <<<"$block"
 
       - run: dart format --set-exit-if-changed .
       - run: flutter analyze
@@ -80,6 +81,12 @@ jobs:
           restore-keys: build-windows-
 
       - run: flutter pub get
+
+      # Diagnostic: flutter hides CMake output, so record whether the runner already has NuGet
+      # (plugin's nuget.cmake downloads a hash-pinned nuget.exe only when none is on PATH).
+      - name: Is NuGet on PATH
+        shell: bash
+        run: where nuget || echo "nuget not on PATH"
 
       - name: Build
         run: flutter build windows --release
