@@ -1,5 +1,6 @@
 #include "flutter_window.h"
 
+#include <flutter/method_result_functions.h>
 #include <flutter/standard_method_codec.h>
 
 #include <cmath>
@@ -12,6 +13,10 @@
 namespace {
 constexpr UINT_PTR kSaveSizeTimerId = 1;
 constexpr UINT kSaveSizeDelayMs = 500;
+// Dart's own hook timeout is 4 s (lib/services/app_shutdown.dart); this is the
+// native backstop so that a wedged Dart side can never keep the window open.
+constexpr UINT_PTR kPrepareCloseTimerId = 2;
+constexpr UINT kPrepareCloseTimeoutMs = 6000;
 }  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -58,6 +63,11 @@ bool FlutterWindow::OnCreate() {
         }
       });
 
+  lifecycle_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "dndreader/lifecycle",
+          &flutter::StandardMethodCodec::GetInstance());
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -77,6 +87,7 @@ void FlutterWindow::OnDestroy() {
     ::KillTimer(hwnd, kSaveSizeTimerId);
   }
   window_channel_ = nullptr;
+  lifecycle_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -88,6 +99,19 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // Quitting: let Dart clean up (delete the search profile) first. Everything
+  // else about closing is unchanged; the second WM_CLOSE falls through.
+  if (message == WM_CLOSE && !close_allowed_ && lifecycle_channel_ &&
+      flutter_controller_) {
+    BeginPrepareToClose(hwnd);
+    return 0;
+  }
+  if (message == WM_TIMER && wparam == kPrepareCloseTimerId) {
+    ::KillTimer(hwnd, kPrepareCloseTimerId);
+    FinishPrepareToClose();
+    return 0;
+  }
+
   // Size persistence observes these messages; it never consumes them.
   switch (message) {
     case WM_SIZE:
@@ -124,6 +148,38 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+}
+
+void FlutterWindow::BeginPrepareToClose(HWND hwnd) {
+  if (close_requested_) {
+    return;  // already waiting for Dart; a second click on X changes nothing
+  }
+  close_requested_ = true;
+  ::SetTimer(hwnd, kPrepareCloseTimerId, kPrepareCloseTimeoutMs, nullptr);
+  // The reply, an error, or "not implemented" all mean the same thing: carry on.
+  auto finish = [this]() {
+    if (HWND window = GetHandle()) {
+      ::KillTimer(window, kPrepareCloseTimerId);
+    }
+    FinishPrepareToClose();
+  };
+  lifecycle_channel_->InvokeMethod(
+      "prepareToClose", nullptr,
+      std::make_unique<flutter::MethodResultFunctions<flutter::EncodableValue>>(
+          [finish](const flutter::EncodableValue*) { finish(); },
+          [finish](const std::string&, const std::string&,
+                   const flutter::EncodableValue*) { finish(); },
+          [finish]() { finish(); }));
+}
+
+void FlutterWindow::FinishPrepareToClose() {
+  if (close_allowed_) {
+    return;
+  }
+  close_allowed_ = true;
+  if (HWND hwnd = GetHandle()) {
+    ::PostMessage(hwnd, WM_CLOSE, 0, 0);
+  }
 }
 
 void FlutterWindow::SetFullscreen(bool enable) {
