@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'search_web_view_desktop.dart';
+import 'search_web_view_windows.dart';
 
 /// The embedded browser could not be started on this system, and starting it
 /// unsandboxed is not allowed. [reason] is user-presentable.
@@ -19,15 +20,19 @@ class SearchUnavailableException implements Exception {
 /// One long-lived embedded browser for search results.
 ///
 /// The seam between shared reader logic and the platform webview (plan §1):
-/// desktop uses CEF (a hardened fork of `webview_cef`); mobile will use
-/// `webview_flutter` in M7. Everything above this interface is shared.
+/// Linux uses CEF (a hardened fork of `webview_cef`); Windows uses WebView2
+/// (`webview_flutter_windows`); mobile will use `webview_flutter` in M7.
+/// Everything above this interface is shared.
 abstract class SearchWebView {
-  /// The desktop implementation on desktop platforms; an always-unavailable
-  /// stand-in elsewhere (mobile arrives in M7 and is not claimed to work).
+  /// The implementation for this platform; an always-unavailable stand-in
+  /// elsewhere (mobile arrives in M7 and is not claimed to work).
+  ///
+  /// Chosen at run time: Dart's conditional imports select on `dart.library.*`,
+  /// not on the operating system, so both packages are compiled everywhere but
+  /// only the matching one is ever constructed.
   factory SearchWebView.create() {
-    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-      return CefSearchWebView();
-    }
+    if (Platform.isWindows) return Webview2SearchWebView();
+    if (Platform.isLinux || Platform.isMacOS) return CefSearchWebView();
     return _UnsupportedSearchWebView();
   }
 
@@ -72,9 +77,13 @@ bool unsandboxedOverrideAllowed({
 
 /// True when the development override is active (non-release builds only).
 ///
+/// CEF-only: on Windows the browser is WebView2, whose sandbox is Microsoft's
+/// and cannot be switched off from here, so this is always false there.
+///
 /// In a release build the environment is not even read: `kReleaseMode` is a
 /// compile-time constant, so the lookup is removed from the binary.
 bool get unsandboxedDevOverrideActive {
+  if (Platform.isWindows) return false;
   return unsandboxedOverrideAllowed(
     releaseMode: kReleaseMode,
     envValue: kReleaseMode

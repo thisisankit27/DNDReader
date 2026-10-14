@@ -962,7 +962,7 @@ the owner demonstrates it; a green CI run proves compilation and unit tests, not
 | Milestone | Status |
 |---|---|
 | W1 Scaffold, CI, green Windows build | **Done 2026-10-14** — both CI jobs green (run `38514280955`); see "W1" below |
-| W2 WebView2 search panel | not started |
+| W2 WebView2 search panel | **Done 2026-10-14** — CI green; compiles and unit-tested only, never run — see "W2" below |
 | W3 Native runner seams | not started |
 | W4 Reader ergonomics and honesty | not started |
 | W5 Packaging | not started |
@@ -1085,3 +1085,98 @@ plan §3.4 stand: exact pin (`webview_flutter_windows: 1.3.0`, no caret), thin w
 - The hash-pinned `nuget.exe` download branch — CI used the runner's preinstalled NuGet.
 - Runtime behaviour of `jni`/`dartjni.dll` on Windows; it compiles, nothing more is claimed.
 - WebView2 sandbox state, Windows 11 behaviour — as plan §8.4.
+
+## W2 — The WebView2 search panel (2026-10-14, branch `feat/w2-webview2-panel`)
+
+### What was built
+
+- `lib/features/search/search_web_view_windows.dart` — `Webview2SearchWebView implements
+  SearchWebView` (~190 lines). The interface is unchanged and no shared code moved.
+  - `start`: `getWebViewVersion()` → `null`/empty means the Runtime is missing →
+    `SearchUnavailableException('The Microsoft Edge WebView2 Runtime is not installed.')`; then
+    stale-profile sweep, `create()` the profile folder, `initializeEnvironment(userDataPath:)`,
+    `initialize()`. Any `PlatformException` there (notably `environment_creation_failed`) becomes
+    `SearchUnavailableException` with a Windows reason; `environment_already_initialized` is reused.
+  - **No `additionalArguments`** are passed — that is where upstream CEF's three dangerous flags
+    lived, so their removal is moot here.
+  - Event mapping: `url` → `onUrlChanged`; `loadingState == navigationCompleted` → `onLoadEnd`
+    (with the last URL seen); `onLoadError` → `onLoadError(url, status.name, status.index)`.
+  - `WebErrorStatus.operationCanceled` is **not** forwarded: it is what a superseded navigation
+    reports, and the session treats any load error as "failed". (Decision from reading the
+    plugin; not observed.)
+  - `setPopupWindowPolicy(sameWindow)` — the CEF fork's `OnBeforePopup` loads the target URL in the
+    same view (`common/webview_handler.cc:161-176`), so `target=_blank` results stay in the panel
+    instead of opening a separate native window.
+  - `setDevToolsEnabled(false)`; the `Webview` widget gets a `permissionRequested` delegate that
+    **denies** every browser permission request (camera, microphone, location, notifications,
+    clipboard-read) rather than letting WebView2 prompt. Both are choices of mine, not in the plan.
+  - Teardown (`dispose()` and an `AppLifecycleListener.onExitRequested`): `clearCookies()`,
+    `clearCache()`, controller `dispose()`, then delete the profile folder, retrying 10 × 300 ms
+    while WebView2's processes exit. Runs once.
+- `lib/features/search/search_profile.dart` — the throwaway profile and the stale sweep (W2.1),
+  split into a **pure** `decideSweep()` and a thin IO layer (`SearchProfileStore`).
+  - Name must match `^dndreader-search-[0-9]+$` and is checked **before** anything is stat'ed.
+  - Entry type is read with `followLinks: false`; a link is refused without being resolved.
+  - The entry and the temp directory are both fully resolved, and the entry must equal
+    `<resolved temp><sep><name>` exactly (an exact comparison, not a prefix test; case-insensitive
+    only on Windows).
+  - Own pid is never swept. Not in the plan, added because it is necessary: a **live second
+    instance** has its own `dndreader-search-<pid>` folder, so each instance holds an exclusive
+    lock on `<folder>\.dndreader-lock` for its lifetime and the sweeper refuses a folder it cannot
+    lock. A folder with no lock file is swept only once it is 60 s old. (A pid-liveness check was
+    rejected: pids are reused, and it needs either a process spawn or a new direct dependency.)
+  - The delete of our own folder re-runs the direct-child check and refuses a symlink.
+- Factory: `Platform.isWindows` → `Webview2SearchWebView`; Linux/macOS stay on
+  `CefSearchWebView`. **Deviation from the plan's "conditional import":** Dart's conditional
+  imports select on `dart.library.*`, not on the operating system, so they cannot separate Windows
+  from Linux; the choice is a run-time `Platform` check and both packages are compiled everywhere.
+  Only the matching class is ever constructed.
+- `unsandboxedDevOverrideActive` is always `false` on Windows, so the `_UnsandboxedBanner` and the
+  override path do not exist there. `DNDREADER_GPU` is only read inside `CefSearchWebView` and is
+  therefore ignored on Windows.
+- Panel text: the "can't run here" body names the **WebView2 Runtime** on Windows instead of the
+  Linux sandbox, and the consent note no longer claims cookies are "not kept on disk" on Windows
+  (it says the data is in a temporary folder deleted when you quit). That sentence would have been
+  false there.
+
+### Tests
+
+142 pass (115 + 27 new). `test/search/search_profile_test.dart` (23): the name matcher against 19
+bad names including `12a`, trailing newline, `/..`, full-width digits and a bare prefix; the
+direct-child check (sibling-prefix, nested, elsewhere); every `decideSweep` refusal (name, symlink,
+non-directory, unresolved, outside temp ×4, own pid, in use, too new); and real-directory runs:
+sweeps only stale folders of ours, **a symlink to an outside directory is neither followed nor
+removed** and the outside files survive, a symlink to a same-named directory, a held lock, a fresh
+lock-less folder, a missing temp directory, and `delete()` refusing a symlinked profile path.
+`test/search/search_panel_text_test.dart` (4). The webview itself is never driven.
+
+Limits of those tests: they run on Linux, where `FileLock.exclusive` is per-process, so a lock
+**held by another process** is exercised through an injected probe, not for real; Windows junctions
+(as opposed to symlinks) and Windows path casing are covered only by the pure functions.
+
+### Windows 11 capture border (plan W2)
+
+**Read:** the plugin builds its capture item with `CreateGraphicsCaptureItemFromVisual` — a
+*Composition visual*, not a window or monitor (`texture_bridge.cc:19`) — and calls
+`StartCapture()` without setting `IsBorderRequired`; the package exposes no API for it. My reading
+of Microsoft's documentation is that the yellow border is drawn for window/display capture, which
+this is not, so it is likely absent — but **not verified**, and it stays on the owner's Windows 11
+checklist. Not a divergence recorded as fact.
+
+### Verified (how)
+
+- 142 tests, format and analyze clean, Linux release build — **run locally**.
+- Windows compile and the 142 tests on Ubuntu — **CI run `38515229190`**, both jobs green. This
+  proves compilation only.
+
+### Not verified
+
+- That the panel starts, loads Google, scrolls, goes back, or fails closed with the Runtime absent —
+  **never run on Windows**.
+- That `getWebViewVersion()` returns `null` (rather than throwing) when the Runtime is missing —
+  taken from the package's documentation (**read**).
+- That `AppLifecycleListener.onExitRequested` fires when the Windows window is closed (**read**
+  from Flutter docs, not observed); if it does not, the folder is removed by the next launch's
+  sweep, not at quit — which the owner's checklist item "folder gone after quit" will show.
+- That denying permissions or disabling DevTools has no visible effect on Google results.
+- The lock-based liveness check across two real processes on Windows.

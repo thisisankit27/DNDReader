@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 
 import 'search_session.dart';
@@ -11,6 +13,26 @@ class SearchPanel extends StatelessWidget {
 
   final SearchSession session;
   final VoidCallback onClose;
+
+  /// The explanation under "Search can't run inside DNDReader here".
+  ///
+  /// Platform-specific because the reason differs: the Linux browser sandbox
+  /// versus the Windows WebView2 Runtime (plan W2).
+  @visibleForTesting
+  static String unavailableBody({required bool windows}) => windows
+      ? 'The Microsoft Edge WebView2 Runtime that shows search results isn’t available '
+            'on this system, so results are not loaded in the panel. You can open them in '
+            'your browser instead.'
+      : 'The browser’s security sandbox couldn’t be started on this system, so results '
+            'are not loaded in the panel. You can open them in your browser instead.';
+
+  /// The note shown when Google asks for a cookie choice.
+  @visibleForTesting
+  static String consentNote({required bool windows}) => windows
+      ? 'Google is asking for a cookie choice. It applies until you quit DNDReader — '
+            'search data is kept in a temporary folder that is deleted when you quit.'
+      : 'Google is asking for a cookie choice. It applies until you quit DNDReader — '
+            'search cookies are not kept on disk.';
 
   /// Panel width for a window of [windowWidth]: 420–480 px on desktop, never
   /// wider than the window.
@@ -127,9 +149,7 @@ class _Body extends StatelessWidget {
         return _Message(
           icon: Icons.shield_outlined,
           title: 'Search can’t run inside DNDReader here',
-          body:
-              'The browser’s security sandbox couldn’t be started on this system, so results '
-              'are not loaded in the panel. You can open them in your browser instead.',
+          body: SearchPanel.unavailableBody(windows: Platform.isWindows),
           detail: session.unavailableReason,
           actionLabel: 'Open in browser',
           onAction: session.openInBrowser,
@@ -244,8 +264,7 @@ class _ConsentHint extends StatelessWidget {
       color: theme.colorScheme.secondaryContainer,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Text(
-        'Google is asking for a cookie choice. It applies until you quit DNDReader — '
-        'search cookies are not kept on disk.',
+        SearchPanel.consentNote(windows: Platform.isWindows),
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSecondaryContainer,
         ),
