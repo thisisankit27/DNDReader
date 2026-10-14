@@ -57,12 +57,7 @@ class Webview2SearchWebView implements SearchWebView {
       );
     }
 
-    // Leftovers from a crashed run first; never fatal.
-    try {
-      _profiles.sweepStale();
-    } catch (e) {
-      debugPrint('[search] stale profile sweep failed: $e');
-    }
+    // Leftovers from a crashed run are swept at launch (main.dart), not here.
 
     final dir = _profiles.create();
     final controller = WebviewController();

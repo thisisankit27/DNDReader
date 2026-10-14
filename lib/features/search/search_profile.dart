@@ -1,4 +1,7 @@
 import 'dart:io';
+import 'dart:isolate';
+
+import 'package:flutter/foundation.dart' show debugPrint;
 
 /// The throwaway WebView2 user-data folder used on Windows (plan §4).
 ///
@@ -301,5 +304,42 @@ class SearchProfileStore {
   static String _baseName(String path) {
     final cut = path.lastIndexOf(RegExp(r'[\\/]'));
     return cut < 0 ? path : path.substring(cut + 1);
+  }
+}
+
+/// Removes stale profile folders left by a crashed or killed earlier run. Called
+/// once from `main()` at launch, so a leftover is cleared whether or not the
+/// search panel is ever used.
+///
+/// Windows only: the Linux browser keeps nothing under the temp directory.
+///
+/// The work is done in a background isolate. A leftover is hundreds of files
+/// (a measured one was ~600 files / 68 MB), and deleting that on the UI isolate
+/// would hold up the first frame. The guards are exactly those of
+/// [SearchProfileStore.sweepStale] and [decideSweep]; nothing is relaxed here.
+/// Never throws; returns how many folders were removed.
+///
+/// A folder with no lock file (a run that died before creating it) is left
+/// until it is [kSearchProfileMinAge] old, so such a leftover goes at a later
+/// launch, not necessarily the next one.
+Future<int> sweepStaleProfilesAtLaunch({
+  Directory? tempDir,
+  int? ownPid,
+  bool? enabled,
+}) async {
+  if (!(enabled ?? Platform.isWindows)) return 0;
+  // Only plain values cross into the isolate.
+  final tempPath = (tempDir ?? Directory.systemTemp).path;
+  final pidValue = ownPid ?? pid;
+  try {
+    return await Isolate.run(
+      () => SearchProfileStore(
+        tempDir: Directory(tempPath),
+        ownPid: pidValue,
+      ).sweepStale(),
+    );
+  } catch (e) {
+    debugPrint('[search] launch-time profile sweep failed: $e');
+    return 0;
   }
 }
