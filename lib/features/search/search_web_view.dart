@@ -46,6 +46,11 @@ abstract class SearchWebView {
   Future<void> goBack();
   Future<void> reload();
 
+  /// Gives keyboard focus back to the Flutter view. Called when the panel
+  /// closes: a native webview can keep OS-level focus after it is hidden, which
+  /// would swallow shortcuts. A no-op where the embedder has no such notion.
+  Future<void> releaseFocus();
+
   /// The widget to place in the layout. Valid after [start] completes.
   Widget get widget;
 
@@ -106,6 +111,8 @@ class _UnsupportedSearchWebView implements SearchWebView {
   Future<void> goBack() async {}
   @override
   Future<void> reload() async {}
+  @override
+  Future<void> releaseFocus() async {}
   @override
   Widget get widget => const SizedBox.shrink();
   @override

@@ -138,6 +138,12 @@ class Webview2SearchWebView implements SearchWebView {
   @override
   Future<void> reload() async => _controller?.reload();
 
+  /// Returns native (Win32) focus from the webview's texture to the Flutter
+  /// view. The package does this itself on a click outside the webview; calling
+  /// it when the panel closes covers closing by keyboard (Esc).
+  @override
+  Future<void> releaseFocus() => WebviewController.releaseFocus();
+
   @override
   Widget get widget {
     final controller = _controller;

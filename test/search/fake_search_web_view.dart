@@ -12,6 +12,7 @@ class FakeSearchWebView implements SearchWebView {
   final List<Uri> loaded = [];
   int backs = 0;
   int reloads = 0;
+  int focusReleases = 0;
   bool disposed = false;
 
   void Function(String url)? _onUrl;
@@ -50,6 +51,8 @@ class FakeSearchWebView implements SearchWebView {
   Future<void> goBack() async => backs++;
   @override
   Future<void> reload() async => reloads++;
+  @override
+  Future<void> releaseFocus() async => focusReleases++;
   @override
   Widget get widget => const SizedBox(key: ValueKey('fake-webview'));
   @override
