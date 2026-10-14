@@ -965,7 +965,7 @@ the owner demonstrates it; a green CI run proves compilation and unit tests, not
 | W2 WebView2 search panel | **Done 2026-10-14** — CI green; compiles and unit-tested only, never run — see "W2" below |
 | W3 Native runner seams | **Done 2026-10-14** — CI green (compile only); nothing run — see "W3" below |
 | W4 Reader ergonomics and honesty | **Done 2026-10-14** — see "W4" below; wheel feel unmeasured |
-| W5 Packaging | not started |
+| W5 Packaging | **Done 2026-10-14** — installer built and silently installed/uninstalled on a CI runner; see "W5" below |
 | W6 Docs and handover | not started |
 
 ## W1 — Scaffold, CI, green Windows build (2026-10-14, branch `feat/w1-scaffold-ci`)
@@ -1289,3 +1289,66 @@ two wheel factors.
 - That the About dialog's Runtime version lookup returns what the code expects.
 - On Windows, that `Platform.pathSeparator` is no longer used anywhere that matters (grep: no
   remaining `split(Platform.pathSeparator)` in `lib/`).
+
+## W5 — Packaging (2026-10-14, branch `feat/w5-packaging`)
+
+### What was built
+
+- `packaging/windows/dndreader.iss` — Inno Setup 6.3+. Per-user by default (`PrivilegesRequired=lowest`
+  with the dialog override, so it can be installed per-machine); `MinVersion=10.0.17763` (Windows 10
+  1809), x64 only; no signing certificate.
+  - **`.pdf` association**: ProgID `DNDReader.pdf` with `shell\open\command` →
+    `"{app}\dndreader.exe" "%1"`, plus `OpenWithProgids` under `.pdf` and an `Applications\dndreader.exe`
+    entry. All under `HKA\Software\Classes` (HKCU for a per-user install). It **offers** DNDReader in
+    "Open with"; it does not seize the default (Windows 10+ leaves that to the user).
+  - **WebView2 Runtime**: detected by the `pv` value under
+    `Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}` in
+    `HKLM32` (WOW6432Node) and `HKCU`; absent/empty/`0.0.0.0` = missing. If missing, the bundled
+    ~1.8 MB `MicrosoftEdgeWebview2Setup.exe` is extracted to `{tmp}` and run with `/silent /install`.
+- `packaging/windows/build-installer.sh` — reads `kAppVersion` with the **same `sed`** as
+  `build-deb.sh`, copies the plugin's BSD-3 `LICENSE` plus a short notices README into
+  `{app}\licenses`, and calls `ISCC`. The bootstrapper is gitignored.
+- CI (`windows.yml`, `build_windows` job): fetches the bootstrapper from Microsoft's
+  `go.microsoft.com/fwlink/p/?LinkId=2124703`, **fails the build unless its Authenticode signature is
+  `Valid` and issued to Microsoft Corporation** (there is no stable hash to pin — Microsoft updates
+  the file), installs Inno Setup if the image lacks it, builds the installer, uploads it, then runs a
+  silent install / launch / uninstall smoke test (`continue-on-error`, so a failure is shown rather
+  than hidden).
+- **No** AppArmor analogue and **no** Windows `verify-sandbox.sh` — the sandbox belongs to Microsoft's
+  Runtime, not to us (plan §3.5).
+
+### Evidence — CI run `38518338633` (both jobs green)
+
+- Bootstrapper: signature `Valid`, `CN=Microsoft Corporation`, 1,860,304 bytes.
+- Installer: `DNDReader-0.1.5-setup-x64.exe`, ~15 MB (artifact 14,963,459 B); the whole bundle is 37 MB
+  uncompressed. Both are well under the plan's ~40 MB estimate because CEF is absent.
+- **Executed on a `windows-latest` runner** by the smoke step:
+  - silent install exit code 0; `dndreader.exe`, `WebView2Loader.dll`, `flutter_windows.dll`,
+    `licenses\README.txt` and `unins000.exe` present in the install dir;
+  - HKCU registry: `DNDReader.pdf\shell\open\command` =
+    `"<dir>\dndreader.exe" "%1"`, and `OpenWithProgids` lists `DNDReader.pdf`;
+  - `dndreader.exe` **was still running after 15 s** and its main window title was `DNDReader`
+    (W3's title change, observed);
+  - `%APPDATA%\dndreader\window-size` **was written**, containing `1044 760` — W3's persistence code
+    ran. (1044 rather than the 1100 default is because the runner's virtual display is evidently
+    1024 px wide, so Windows clamped the window; this is not a defect and the height is 760.)
+  - silent uninstall exit code 0, install dir and the ProgId key removed.
+- The runner already had the WebView2 Runtime, so the **bootstrap branch of the installer was not
+  executed**. NuGet was again the runner's own (`C:\ProgramData\Chocolatey\bin\nuget.exe`).
+
+### What this does and does not show
+
+It shows the installer builds, installs and uninstalls cleanly and the app **starts and stays up** on
+a Windows runner without a PDF argument. A hosted runner is not a desktop a person is using: it says
+nothing about rendering, the panel, input, focus, or the Windows 10 machine the owner will use.
+
+### Not verified
+
+- The WebView2 bootstrapper path on a machine **without** the Runtime — the installer's `Check`
+  expression and the `/silent /install` invocation are **read** from Microsoft's documentation only.
+- That Explorer's "Open with" / double-click actually launches DNDReader with the file (only the
+  registry values were checked).
+- Per-machine (admin) install behaviour, upgrade-over-existing, and the installer on Windows 10 (the
+  runner is a newer Windows Server image).
+- The Inno Setup version used (installed by the image or Chocolatey; the exact version was not
+  recorded by this run).
