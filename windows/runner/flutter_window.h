@@ -36,6 +36,17 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       window_channel_;
 
+  // "dndreader/lifecycle": prepareToClose() to Dart. The close is deferred
+  // until Dart has finished its clean-up (the search profile), or a native
+  // timeout elapses, so that the WebView2 environment is torn down while the
+  // engine is still alive instead of during OnDestroy().
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      lifecycle_channel_;
+  bool close_requested_ = false;  // prepareToClose is in flight
+  bool close_allowed_ = false;    // clean-up finished; let WM_CLOSE through
+  void BeginPrepareToClose(HWND hwnd);
+  void FinishPrepareToClose();
+
   // Windows has no fullscreen window state to observe, so it is emulated: the
   // style and placement are saved, the frame is stripped and the window sized
   // to its monitor, and fullscreenChanged is sent from here.

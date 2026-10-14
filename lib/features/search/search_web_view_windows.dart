@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter/widgets.dart';
 import 'package:webview_flutter_windows/webview_flutter_windows.dart';
 
+import '../../services/app_shutdown.dart';
 import 'search_profile.dart';
 import 'search_web_view.dart';
 
@@ -112,7 +113,11 @@ class Webview2SearchWebView implements SearchWebView {
     await controller.setDevToolsEnabled(false);
 
     // Quitting must clear and delete the profile before the process exits; a
-    // widget's dispose() is not guaranteed to run on quit.
+    // widget's dispose() is not guaranteed to run on quit. The Windows runner
+    // asks for this explicitly (AppShutdown) before it destroys the window;
+    // the lifecycle listener is a second route where the framework does send an
+    // exit request.
+    AppShutdown.register(_shutdown);
     _exitListener = AppLifecycleListener(
       onExitRequested: () async {
         await _shutdown();
@@ -162,6 +167,7 @@ class Webview2SearchWebView implements SearchWebView {
   Future<void> _shutdown() => _teardown ??= _runShutdown();
 
   Future<void> _runShutdown() async {
+    AppShutdown.unregister(_shutdown);
     _exitListener?.dispose();
     _exitListener = null;
     for (final sub in _subscriptions) {

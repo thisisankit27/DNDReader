@@ -6,10 +6,14 @@ import 'package:flutter/material.dart';
 import 'app.dart';
 import 'dev/dev_capture.dart';
 import 'features/search/search_profile.dart';
+import 'services/app_shutdown.dart';
 import 'services/settings_service.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Lets the native runner run clean-up (e.g. the search profile) before the
+  // window is destroyed; see services/app_shutdown.dart.
+  AppShutdown.install();
   final settings = await SettingsService.load();
   runApp(
     DevCapture(
