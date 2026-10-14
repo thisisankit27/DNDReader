@@ -452,6 +452,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   builder: (context, _) => ReaderMenu(
                     themeMode: _settings.settings.themeMode,
                     onThemeMode: _settings.setThemeMode,
+                    selectionHighlight: _settings.settings.selectionHighlight,
+                    onSelectionHighlight: _settings.setSelectionHighlight,
                     recents: _settings.settings.recents,
                     onOpenRecent: _openPath,
                     onShowShortcuts: () => showShortcutsDialog(context),

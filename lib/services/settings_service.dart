@@ -22,6 +22,7 @@ class SettingsService extends ChangeNotifier {
   static const _kLastDocument = 'lastDocument';
   static const _kLastPage = 'lastPage';
   static const _kRecents = 'recents';
+  static const _kHighlight = 'selectionHighlight';
 
   final SharedPreferences? _prefs;
   AppSettings _settings;
@@ -59,7 +60,14 @@ class SettingsService extends ChangeNotifier {
               .toList(growable: false)
         : const <String>[];
 
+    final highlightName = prefs.get(_kHighlight);
+    var highlight = SelectionHighlight.skyBlue;
+    for (final h in SelectionHighlight.values) {
+      if (h.name == highlightName) highlight = h;
+    }
+
     return AppSettings(
+      selectionHighlight: highlight,
       themeMode: theme,
       zoom: zoom,
       lastDocument: rawDoc is String && rawDoc.isNotEmpty ? rawDoc : null,
@@ -71,6 +79,12 @@ class SettingsService extends ChangeNotifier {
   Future<void> setThemeMode(ThemeMode mode) async {
     _settings = _settings.copyWith(themeMode: mode);
     await _prefs?.setString(_kTheme, mode.name);
+    notifyListeners();
+  }
+
+  Future<void> setSelectionHighlight(SelectionHighlight value) async {
+    _settings = _settings.copyWith(selectionHighlight: value);
+    await _prefs?.setString(_kHighlight, value.name);
     notifyListeners();
   }
 
@@ -112,6 +126,7 @@ class SettingsService extends ChangeNotifier {
       themeMode: _settings.themeMode,
       zoom: _settings.zoom,
       recents: _settings.recents,
+      selectionHighlight: _settings.selectionHighlight,
     );
     await _prefs?.remove(_kLastDocument);
     await _prefs?.remove(_kLastPage);

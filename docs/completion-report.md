@@ -22,7 +22,7 @@ Standing rules the owner set, and how they were kept:
 
 ## 2. What was delivered
 
-**Product (v0.1.4, `dist/dndreader_0.1.4-1_amd64.deb`, 326 MB):**
+**Product (v0.1.4, `dist/dndreader_0.1.5-1_amd64.deb`, 326 MB):**
 
 - Open a PDF (picker, `Ctrl+O`, command line); PDFium rendering (pdfrx 2.6.5); scroll, zoom, fit.
 - Select text (drag or double-click a word) → pill under the selection / `Ctrl+E` / right-click menu →
@@ -32,10 +32,12 @@ Standing rules the owner set, and how they were kept:
 - Editable page-number field (type, Enter to jump), rotate (`Ctrl+R` / `Ctrl+Shift+R`), full screen (`F11`,
   `Esc` leaves), mouse-wheel speed fix, themes (system/light/dark), recents, restored page/zoom/window size.
 - Right-click menu: Copy, Find meaning, Select all.
+- Selection highlight colour chosen by the user (Menu → Selection colour; sky blue default, yellow, orange, pink,
+  grey — Okabe–Ito colour-blind-safe palette), persisted. (v0.1.5)
 
 **Engineering:**
 
-- `lib/` ≈ 4,350 lines, `test/` ≈ 1,700 lines; **113 tests** (unit + widget), `flutter analyze` clean,
+- `lib/` ≈ 4,350 lines, `test/` ≈ 1,700 lines; **115 tests** (unit + widget), `flutter analyze` clean,
   `dart format` clean.
 - **Hardened embedded browser:** a public fork `thisisankit27/webview_cef` pinned at
   `0970b4447cb667dc4a512ba5350a39a253d6d273` (CEF 149 / Chromium 149.0.7827.156).
@@ -142,9 +144,9 @@ Standing rules the owner set, and how they were kept:
 
 ```bash
 export PATH=$HOME/sdk/flutter/bin:$PATH
-dart format --set-exit-if-changed . && flutter analyze && flutter test   # 113 tests
+dart format --set-exit-if-changed . && flutter analyze && flutter test   # 115 tests
 flutter build linux --release && packaging/linux/build-deb.sh
-sudo apt install ./dist/dndreader_0.1.4-1_amd64.deb                       # owner action
+sudo apt install ./dist/dndreader_0.1.5-1_amd64.deb                       # owner action
 packaging/linux/verify-sandbox.sh        # with the search panel open: expect PASS
 ```
 

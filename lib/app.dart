@@ -21,6 +21,14 @@ class _DndReaderAppState extends State<DndReaderApp> {
   late final SettingsService _settings =
       widget.settings ?? SettingsService.inMemory();
 
+  /// The chosen selection highlight, applied through the theme so the PDF
+  /// viewer and text fields use the same colour.
+  ThemeData _withSelection(ThemeData base) => base.copyWith(
+    textSelectionTheme: TextSelectionThemeData(
+      selectionColor: _settings.settings.selectionHighlight.overlay,
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -28,8 +36,8 @@ class _DndReaderAppState extends State<DndReaderApp> {
       builder: (context, _) => MaterialApp(
         title: 'DNDReader',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
+        theme: _withSelection(AppTheme.light()),
+        darkTheme: _withSelection(AppTheme.dark()),
         themeMode: _settings.settings.themeMode,
         home: ReaderScreen(
           initialPath: widget.initialPath,

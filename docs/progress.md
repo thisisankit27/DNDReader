@@ -931,3 +931,22 @@ first made it appear.
 - **Not verified:** the *fast* timing itself in the running app — the harness polls every 400 ms, longer than the
   debounce, so it cannot reproduce "instantly"; the unit test covers the logic. Google answered that session's
   repeated test searches with its `/sorry/` page (rate limit); not automated against, per the standing rule.
+
+## Post-MVP: selection highlight colour (2026-10-14, branch `feat/m11-selection-colour`, v0.1.5)
+
+Owner request: let the user choose the text-selection highlight colour; the default read as green, which can be a
+problem for colour-blind users.
+
+- **Built:** `SelectionHighlight` (sky blue — new default, yellow, orange, pink, grey; the Okabe–Ito
+  colour-blind-safe hues plus a neutral grey) in `models/app_settings.dart`; Menu → **Selection colour** with a
+  radio per colour and a swatch drawn as it looks over the white page; persisted (`selectionHighlight`, validated
+  on load: an unknown value falls back to the default); applied through `TextSelectionThemeData` so the PDF viewer
+  (and text fields) follow it live.
+- **Verified:** 3 new unit tests (default, persistence + bad value, survives "forget last document"); 115 tests
+  pass; in the running app the default highlight is sky blue, choosing Orange recolours the existing selection
+  immediately, and after a restart the stored value (`flutter.selectionHighlight: orange`) is applied.
+  (The test choice was then removed from the owner's preferences file so their default is untouched.)
+- **Not verified:** how each colour looks to people with each type of colour-vision deficiency — the palette is the
+  published Okabe–Ito set, not tested with a simulator or with users; the dark theme is unaffected because the page
+  is always white, but the light theme was not re-screenshotted for this change; contrast of the translucent
+  overlay against *coloured* PDF backgrounds or images was not examined.
