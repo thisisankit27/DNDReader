@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../models/app_settings.dart';
+import '../../services/path_names.dart';
 
 /// Overflow menu: recent documents, theme, shortcuts, about.
 class ReaderMenu extends StatelessWidget {
@@ -27,8 +28,6 @@ class ReaderMenu extends StatelessWidget {
   final VoidCallback onShowShortcuts;
   final VoidCallback onShowAbout;
 
-  static String _name(String path) => path.split(Platform.pathSeparator).last;
-
   @override
   Widget build(BuildContext context) {
     // Only documents that still exist are offered.
@@ -49,7 +48,10 @@ class ReaderMenu extends StatelessWidget {
                   for (final path in available)
                     MenuItemButton(
                       onPressed: () => onOpenRecent(path),
-                      child: Tooltip(message: path, child: Text(_name(path))),
+                      child: Tooltip(
+                        message: path,
+                        child: Text(baseName(path)),
+                      ),
                     ),
                 ],
           child: const Text('Open recent'),

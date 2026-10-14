@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'search_web_view_desktop.dart';
+import 'search_web_view_windows.dart';
 
 /// The embedded browser could not be started on this system, and starting it
 /// unsandboxed is not allowed. [reason] is user-presentable.
@@ -19,15 +20,19 @@ class SearchUnavailableException implements Exception {
 /// One long-lived embedded browser for search results.
 ///
 /// The seam between shared reader logic and the platform webview (plan §1):
-/// desktop uses CEF (a hardened fork of `webview_cef`); mobile will use
-/// `webview_flutter` in M7. Everything above this interface is shared.
+/// Linux uses CEF (a hardened fork of `webview_cef`); Windows uses WebView2
+/// (`webview_flutter_windows`); mobile will use `webview_flutter` in M7.
+/// Everything above this interface is shared.
 abstract class SearchWebView {
-  /// The desktop implementation on desktop platforms; an always-unavailable
-  /// stand-in elsewhere (mobile arrives in M7 and is not claimed to work).
+  /// The implementation for this platform; an always-unavailable stand-in
+  /// elsewhere (mobile arrives in M7 and is not claimed to work).
+  ///
+  /// Chosen at run time: Dart's conditional imports select on `dart.library.*`,
+  /// not on the operating system, so both packages are compiled everywhere but
+  /// only the matching one is ever constructed.
   factory SearchWebView.create() {
-    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-      return CefSearchWebView();
-    }
+    if (Platform.isWindows) return Webview2SearchWebView();
+    if (Platform.isLinux || Platform.isMacOS) return CefSearchWebView();
     return _UnsupportedSearchWebView();
   }
 
@@ -40,6 +45,11 @@ abstract class SearchWebView {
   Future<void> loadUrl(Uri url);
   Future<void> goBack();
   Future<void> reload();
+
+  /// Gives keyboard focus back to the Flutter view. Called when the panel
+  /// closes: a native webview can keep OS-level focus after it is hidden, which
+  /// would swallow shortcuts. A no-op where the embedder has no such notion.
+  Future<void> releaseFocus();
 
   /// The widget to place in the layout. Valid after [start] completes.
   Widget get widget;
@@ -56,7 +66,40 @@ abstract class SearchWebView {
     void Function(String url, String errorText, int errorCode)? callback,
   );
 
+  /// The browser's own history state, for engines that report it: whether Back
+  /// can go anywhere. Engines that do not report it never call this, and the
+  /// session then relies on its own record of visited pages.
+  set onHistoryChanged(void Function(bool canGoBack)? callback);
+
   void dispose();
+}
+
+/// Pairs a failed navigation with the load-end its engine raises for it.
+///
+/// CEF (and WebView2) report a load *end* for a navigation that failed, right
+/// after the error, carrying the failed URL. That is not "the page loaded". The
+/// session accepts a load-end after an error as a recovery (a challenge page
+/// that finishes loading after an aborted hop), so an engine that raises the
+/// trailing end must not forward it: otherwise the failure is turned into a
+/// successful load the instant it is shown (observed on Linux, offline).
+class FailedLoadEndFilter {
+  String? _failedUrl;
+
+  /// Record that a main-frame navigation to [url] failed.
+  void failed(String url) => _failedUrl = url;
+
+  /// A new navigation starts: any pending pairing no longer applies.
+  void navigationStarted() => _failedUrl = null;
+
+  /// Whether a load-end for [url] is a real completion. False exactly once for
+  /// the failed URL.
+  bool shouldForwardEnd(String url) {
+    if (_failedUrl != null && url == _failedUrl) {
+      _failedUrl = null;
+      return false;
+    }
+    return true;
+  }
 }
 
 /// Whether the development override that permits an unsandboxed browser applies.
@@ -72,9 +115,13 @@ bool unsandboxedOverrideAllowed({
 
 /// True when the development override is active (non-release builds only).
 ///
+/// CEF-only: on Windows the browser is WebView2, whose sandbox is Microsoft's
+/// and cannot be switched off from here, so this is always false there.
+///
 /// In a release build the environment is not even read: `kReleaseMode` is a
 /// compile-time constant, so the lookup is removed from the binary.
 bool get unsandboxedDevOverrideActive {
+  if (Platform.isWindows) return false;
   return unsandboxedOverrideAllowed(
     releaseMode: kReleaseMode,
     envValue: kReleaseMode
@@ -98,6 +145,8 @@ class _UnsupportedSearchWebView implements SearchWebView {
   @override
   Future<void> reload() async {}
   @override
+  Future<void> releaseFocus() async {}
+  @override
   Widget get widget => const SizedBox.shrink();
   @override
   set onUrlChanged(void Function(String url)? callback) {}
@@ -107,6 +156,8 @@ class _UnsupportedSearchWebView implements SearchWebView {
   set onLoadError(
     void Function(String url, String errorText, int errorCode)? callback,
   ) {}
+  @override
+  set onHistoryChanged(void Function(bool canGoBack)? callback) {}
   @override
   void dispose() {}
 }

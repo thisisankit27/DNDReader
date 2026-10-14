@@ -1,0 +1,202 @@
+# Windows port CI (docs/windows-implementation-plan.md §7 W1, §8.2).
+#
+# What a green run proves: the Dart code is formatted, analyses clean and its unit tests pass; the
+# Windows app COMPILES and its bundle contains the expected files. It does NOT prove the app runs,
+# renders, or looks right — that is the owner's interactive pass (§8.3).
+name: windows
+
+on:
+  push:
+    branches: ['main', 'feat/windows-port', 'feat/w*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.47.7
+
+jobs:
+  analyze_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # pubspec_overrides.yaml is gitignored and points at a developer's local checkout. It must
+      # never be what CI resolves against; CI resolves the SHA pinned in pubspec.yaml.
+      - name: No local dependency overrides
+        run: test ! -e pubspec_overrides.yaml
+
+      - run: flutter pub get
+
+      - name: Fork resolves from the pinned git ref
+        run: |
+          block=$(sed -n '/^  webview_cef:/,/^  [a-z_]*:$/p' pubspec.lock)
+          echo "$block"
+          grep -q 'source: git' <<<"$block"
+
+      - run: dart format --set-exit-if-changed .
+      - run: flutter analyze
+      - run: flutter test
+
+  build_windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: No local dependency overrides
+        shell: bash
+        run: test ! -e pubspec_overrides.yaml
+
+      # Optimisation, not a precondition: with CEF excluded there is no engine download or compile.
+      - name: Cache pub cache
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\Pub\Cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
+
+      - name: Cache build/windows
+        uses: actions/cache@v4
+        with:
+          path: build/windows
+          key: build-windows-${{ hashFiles('pubspec.lock', 'windows/**') }}
+          restore-keys: build-windows-
+
+      - run: flutter pub get
+
+      # Diagnostic: flutter hides CMake output, so record whether the runner already has NuGet
+      # (plugin's nuget.cmake downloads a hash-pinned nuget.exe only when none is on PATH).
+      - name: Is NuGet on PATH
+        shell: bash
+        run: where nuget || echo "nuget not on PATH"
+
+      # Pure runner logic (window placement), compiled with the MSVC the runner uses.
+      - name: Runner geometry unit test
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          $bat = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+          $out = Join-Path $env:RUNNER_TEMP 'geometry-test'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          cmd /c "`"$bat`" >nul && cl /nologo /EHsc /std:c++17 /W4 /WX /I windows\runner /Fo`"$out\geometry.obj`" /Fe`"$out\geometry.exe`" windows\runner\test\window_geometry_test.cpp && `"$out\geometry.exe`""
+          if ($LASTEXITCODE -ne 0) { throw "window geometry test failed ($LASTEXITCODE)" }
+
+
+      - name: Build
+        run: flutter build windows --release
+
+      - name: Assert bundle contents
+        shell: bash
+        run: |
+          bundle=build/windows/x64/runner/Release
+          ls -la "$bundle"
+          missing=0
+          for f in dndreader.exe WebView2Loader.dll flutter_windows.dll data/app.so; do
+            if [ -e "$bundle/$f" ]; then echo "ok       $f"; else echo "MISSING  $f"; missing=1; fi
+          done
+          # CEF is excluded on Windows (fork branch dndreader/windows): none of it may ship.
+          if ls "$bundle" | grep -qi '^libcef'; then echo "UNEXPECTED libcef in bundle"; missing=1; fi
+          du -sh "$bundle"
+          exit $missing
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: dndreader-windows-bundle
+          path: build/windows/x64/runner/Release
+          if-no-files-found: error
+
+      # --- W5: installer ---------------------------------------------------
+      # Microsoft's Evergreen bootstrapper (~2 MB). There is no stable hash to pin
+      # (Microsoft updates it), so its Authenticode signature is verified instead.
+      - name: Fetch WebView2 bootstrapper and verify its signature
+        shell: pwsh
+        run: |
+          $exe = 'packaging/windows/MicrosoftEdgeWebview2Setup.exe'
+          Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $exe
+          $sig = Get-AuthenticodeSignature $exe
+          $sig | Format-List Status, StatusMessage
+          $sig.SignerCertificate.Subject
+          "{0:N0} bytes" -f (Get-Item $exe).Length
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+            throw 'WebView2 bootstrapper signature is not a valid Microsoft Corporation signature'
+          }
+
+      - name: Install Inno Setup if the image lacks it
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue) -and -not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          Test-Path $iscc
+
+      - name: Build installer
+        shell: bash
+        run: packaging/windows/build-installer.sh
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: dndreader-windows-installer
+          path: dist/DNDReader-*-setup-x64.exe
+          if-no-files-found: error
+
+      # Executes the installer on the runner. Evidence about install/uninstall
+      # mechanics and that the process starts and stays up — NOT about how the
+      # app looks or behaves. Informational: a failure here is reported, not
+      # hidden, and does not by itself fail the build.
+      - name: Smoke test (silent install, launch, uninstall)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist/DNDReader-*-setup-x64.exe | Select-Object -First 1).FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'dnd-install'
+          $log = Join-Path $env:RUNNER_TEMP 'install.log'
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$dir","/LOG=$log" -Wait -PassThru
+          "installer exit code: $($p.ExitCode)"
+          foreach ($f in 'dndreader.exe','WebView2Loader.dll','flutter_windows.dll','licenses\README.txt','unins000.exe') {
+            "{0,-28} {1}" -f $f, (Test-Path (Join-Path $dir $f))
+          }
+          $cmd = (Get-ItemProperty 'HKCU:\Software\Classes\DNDReader.pdf\shell\open\command').'(default)'
+          "open command: $cmd"
+          $owp = (Get-Item 'HKCU:\Software\Classes\.pdf\OpenWithProgids').Property
+          "OpenWithProgids: $owp"
+          Get-Content $log -Tail 5
+
+          $app = Start-Process (Join-Path $dir 'dndreader.exe') -PassThru
+          Start-Sleep -Seconds 15
+          $app.Refresh()
+          if ($app.HasExited) {
+            "APP EXITED within 15 s, exit code $($app.ExitCode)"
+            exit 1
+          }
+          "app alive after 15 s; window title: '$($app.MainWindowTitle)'"
+          $size = Join-Path $env:APPDATA 'dndreader\window-size'
+          "window-size file exists: $(Test-Path $size)"
+          if (Test-Path $size) { "window-size contents: $(Get-Content $size)" }
+          Stop-Process -Id $app.Id -Force
+
+          $u = Start-Process (Join-Path $dir 'unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES' -Wait -PassThru
+          Start-Sleep -Seconds 3
+          "uninstaller exit code: $($u.ExitCode)"
+          "install dir removed: $(-not (Test-Path (Join-Path $dir 'dndreader.exe')))"
+          "ProgId removed: $(-not (Test-Path 'HKCU:\Software\Classes\DNDReader.pdf'))"

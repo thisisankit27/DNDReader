@@ -21,8 +21,10 @@ import '../../services/settings_service.dart';
 import 'selection_action_controller.dart';
 import 'selection_anchor.dart';
 import 'selection_pill.dart';
+import '../search/embedded_browser_info.dart';
 import '../search/search_panel.dart';
 import '../search/search_session.dart';
+import '../../services/path_names.dart';
 import '../../services/search_url.dart';
 
 /// The single screen: header on top, reading surface below.
@@ -160,7 +162,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   void _onSearchChanged() {
     final visible = _search.visible;
-    if (_searchWasVisible && !visible) _focusReader();
+    if (_searchWasVisible && !visible) {
+      // The native webview may still hold OS focus while hidden.
+      unawaited(_search.webView?.releaseFocus() ?? Future<void>.value());
+      _focusReader();
+    }
     _searchWasVisible = visible;
   }
 
@@ -171,6 +177,24 @@ class _ReaderScreenState extends State<ReaderScreen> {
   /// Takes primary focus back from the embedded browser (or the page field).
   void _focusReader() {
     if (mounted && !_readerFocus.hasFocus) _readerFocus.requestFocus();
+  }
+
+  /// The page field is done (Enter, Esc, or a tap elsewhere): put keyboard
+  /// focus back on the document.
+  ///
+  /// [_focusReader] is not enough here. The field sits under [_readerFocus], so
+  /// while it is focused `_readerFocus.hasFocus` is true and that call does
+  /// nothing; the field's own `unfocus()` then hands primary focus to the route's
+  /// focus scope, which is *above* the shortcuts, so Ctrl+R/E/T and the arrow
+  /// keys went nowhere until the document was clicked. Focusing the viewer's own
+  /// node is what a click on the document does.
+  void _onPageEditDone() {
+    if (!mounted) return;
+    if (_path != null && !_failed && _controller.isReady) {
+      _controller.requestFocus();
+    } else {
+      _readerFocus.requestFocus();
+    }
   }
 
   void _goToPage(int page) {
@@ -218,7 +242,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   String get _title {
     final path = _path;
     if (path == null) return 'DNDReader';
-    return path.split(Platform.pathSeparator).last;
+    return baseName(path);
   }
 
   /// Page count of the open document; null when nothing is open.
@@ -298,14 +322,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
     if (_controller.isReady) _controller.goToDest(dest);
   }
 
-  void _showAbout() {
+  Future<void> _showAbout() async {
+    // Resolved first: on Windows the Runtime's version is asked of the Runtime.
+    final browser = await embeddedBrowserDescription();
+    if (!mounted) return;
     showAboutDialog(
       context: context,
       applicationName: 'DNDReader',
       applicationVersion: kAppVersion,
       applicationLegalese:
           'Search results are shown by Google in an embedded browser.\n'
-          'Embedded browser: $kBundledChromium',
+          '$browser',
     );
   }
 
@@ -434,7 +461,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 pageNumber: _pageNumber,
                 pageCount: _headerPageCount,
                 onGoToPage: _goToPage,
-                onPageEditDone: _focusReader,
+                onPageEditDone: _onPageEditDone,
                 onRotate: hasDocument && _controller.isReady ? _rotate : null,
                 fullscreen: _window.fullscreen,
                 onToggleFullscreen: _window.toggleFullscreen,

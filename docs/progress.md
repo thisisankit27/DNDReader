@@ -950,3 +950,502 @@ problem for colour-blind users.
   published Okabe–Ito set, not tested with a simulator or with users; the dark theme is unaffected because the page
   is always white, but the light theme was not re-screenshotted for this change; contrast of the translucent
   overlay against *coloured* PDF backgrounds or images was not examined.
+
+---
+
+# Windows port (WebView2) — `feat/windows-port`
+
+Source of truth: `docs/windows-implementation-plan.md`. Labels as there: **verified** (with how),
+**read** (source/docs, not executed), **not verified**. **Nothing on Windows is verified until CI or
+the owner demonstrates it; a green CI run proves compilation and unit tests, not that the app runs.**
+
+| Milestone | Status |
+|---|---|
+| W1 Scaffold, CI, green Windows build | **Done 2026-10-14** — both CI jobs green (run `38514280955`); see "W1" below |
+| W2 WebView2 search panel | **Done 2026-10-14** — CI green; compiles and unit-tested only, never run — see "W2" below |
+| W3 Native runner seams | **Done 2026-10-14** — CI green (compile only); nothing run — see "W3" below |
+| W4 Reader ergonomics and honesty | **Done 2026-10-14** — see "W4" below; wheel feel unmeasured |
+| W5 Packaging | **Done 2026-10-14** — installer built and silently installed/uninstalled on a CI runner; see "W5" below |
+| W6 Docs and handover | **Done 2026-10-14** — `docs/completion-report-windows.md`; ready for review |
+
+## W1 — Scaffold, CI, green Windows build (2026-10-14, branch `feat/w1-scaffold-ci`)
+
+### Supply-chain check on `webview_flutter_windows` 1.3.0 (plan §3.4) — passed, with stated limits
+
+The package borrows the Flutter team's federated naming and its publisher domain (`tomars.tech`)
+does not match its repo owner (`omar-hanafy`). Findings:
+
+**1. Lineage — verified by comparing source, not by reading the README.**
+- The published archive (`pub.dev/api/archives/webview_flutter_windows-1.3.0.tar.gz`) was downloaded
+  and its sha256 (`599d1254…dd35`) **matches** `pubspec.lock`'s recorded hash. 
+- `omar-hanafy/webview_flutter_windows` is a **GitHub fork** (`fork: true`, parent
+  `jnschulze/flutter-webview-windows`). Cloned: 151 commits, of which 92 are by the original author
+  (Niklas Schulze) from 2021-04-30 onward; the merge-base with upstream `main` is `ed81bbe`
+  (2025-06-26), upstream's current head. The fork adds 31 commits (29 by Omar Khaled, 2 by external
+  contributors) on top.
+- Tag `webview_flutter_windows-v1.3.0` (`fa4ee15`): its `windows/` and `lib/` trees are
+  **byte-identical** to the published archive (`diff -rq`; the only difference is a `.gitignore`
+  that is not published). What pub.dev ships is what the repo's tag contains.
+- `LICENSE` is the original BSD-3-Clause, copyright Niklas Schulze.
+- The owner account is 7 years old (2019-03-13) with 84 public repos. The repo was forked
+  2026-06-10; 2 stars. **Adoption is low**, as the plan says; that is a maturity risk, not
+  evidence of malice.
+
+**2. What the build fetches — read from `windows/cmake/nuget.cmake` and `windows/CMakeLists.txt`.**
+- `find_program(NUGET nuget)` first; **only if no `nuget` is on `PATH`** does it download
+  `https://dist.nuget.org/win-x86-commandline/v7.6.0/nuget.exe` with `TLS_VERIFY ON` and
+  `EXPECTED_HASH SHA256=751ee5e7…8fb8a2`, then re-checks the hash and `FATAL_ERROR`s on mismatch.
+  **Verified by me:** I downloaded that URL independently and its sha256 equals the pinned value.
+  This is stronger than the plan's "downloads nuget.exe if missing" worry implied: it is pinned by
+  version and by hash.
+- It then runs `nuget install` (at CMake configure time) for **two pinned versions** from
+  nuget.org: `Microsoft.Web.WebView2` 1.0.3967.48 and `Microsoft.Windows.ImplementationLibrary`
+  1.0.260126.7.
+- **Not established / residual trust:** (a) the plugin pins those NuGet package *versions* but not
+  their *content hashes*; integrity there rests on nuget.org and NuGet's own package-signature
+  handling (Microsoft publishes both packages signed — **read**, not checked here).
+  (b) **On CI the hash-pinned download path never ran:** the `where nuget` diagnostic (run 2)
+  shows `C:\ProgramData\Chocolatey\bin\nuget.exe` already on the runner's `PATH`, so
+  `find_program` found it and no `nuget.exe` was fetched. The runner's NuGet is whatever the
+  GitHub image ships; it is not pinned by this project. The download-and-verify branch was read
+  and its hash checked by hand, but it has **not been executed** by anything here.
+- `windows/CMakeLists.txt` contains no other `file(DOWNLOAD)`, `execute_process` or
+  `add_custom_command`; the plugin's own Windows sources contain no HTTP client, process-spawn or
+  shell-execute calls (`grep` over `windows/` and `lib/`: only `LoadLibraryA("ComBase.dll")` and
+  `("coremessaging.dll")`, both OS libraries, for WinRT activation).
+- The Dart side opens only its own method/event channels.
+
+**3. Conclusion.** Lineage is genuine and the build hook is pinned and hash-checked. **No hard stop.**
+I did not audit the C++ source line by line; the claims above are about provenance, the build
+hook and the absence of network/process primitives, not a full security review. The mitigations in
+plan §3.4 stand: exact pin (`webview_flutter_windows: 1.3.0`, no caret), thin wrapper behind
+`SearchWebView`, "Open in browser" as the escape hatch.
+
+### What was built
+
+- **Fork change** — `thisisankit27/webview_cef` branch `dndreader/windows`, commit
+  `0e82566`: removes the `windows:` entry from `flutter.plugin.platforms` (Linux/macOS untouched) and
+  records the change and trade-off in the fork's `HARDENING.md`. `pubspec.yaml` pins that **SHA**,
+  not the branch. Trade-off, as in the plan: the fork becomes DNDReader-specific on this axis.
+- **`flutter create --platforms=windows`** (guarded). Touched exactly:
+  - `.metadata` — **replaced** the `linux` migration entry with `windows` rather than adding one;
+    restored the `linux` entry by hand, so both are present (plus `root`).
+  - `analysis_options.yaml` — added `windows/**` to `analyzer.exclude` (kept; correct).
+  - `pubspec.lock` — see below.
+  - `test/widget_test.dart` — a default counter test that cannot pass against this app; **deleted**.
+  - `windows/` — 16 new files (runner, CMake, generated plugin registrant).
+  - `README.md` and `.gitignore` were **not** touched.
+- **`pubspec.yaml`** — `webview_cef` ref → `0e82566…`; added `webview_flutter_windows: 1.3.0`.
+- **`pubspec.lock`** — regenerated with the local `pubspec_overrides.yaml` moved aside, so it records
+  the git ref and the hosted package (the `flutter create` run had written the local override path
+  into the lock). The new package's sha256 equals the archive hash checked above.
+- **`.github/workflows/windows.yml`** — `analyze_test` (ubuntu-latest) and `build_windows`
+  (windows-latest) as specified in plan §7 W1, plus guards that `pubspec_overrides.yaml` is absent
+  and that the fork resolves from a git ref, and a bundle assertion that also fails if any `libcef*`
+  ships.
+
+### CI results
+
+**Run 1** (`38513515416`, commit `8ca3e29` on `feat/w1-scaffold-ci`):
+
+- `build_windows` — **success**. `flutter build windows --release` built `dndreader.exe` in
+  **215 s** (cold caches). The `jni` FFI build, named as the likeliest blocker, **built without
+  intervention** (`dartjni.dll` is in the bundle). All four assertions passed (`dndreader.exe`,
+  `WebView2Loader.dll`, `flutter_windows.dll`, `data/app.so`); **no `libcef*` in the bundle**.
+  Bundle is **37 MB**: `dndreader.exe` 92 KB, `flutter_windows.dll` 21 MB, `pdfium.dll` 7.2 MB,
+  `webview_flutter_windows_plugin.dll` 554 KB, `WebView2Loader.dll` 159 KB, `dartjni.dll` 58 KB,
+  `url_launcher_windows_plugin.dll` 98 KB. (Plan estimated ~40 MB; CEF's 326 MB is absent.)
+- `analyze_test` — **failed on my own guard step**, not on format/analyze/test: the `grep -A6`
+  window was one line short of `source: git`. Fixed (`sed` range). The format, analyze and test
+  steps in that job were therefore skipped on run 1.
+
+**Run 2** (`38514280955`, commit `1bbdd01`) — **both jobs green.**
+
+- `analyze_test` — success: no overrides file, fork resolved as `source: git`, `dart format`
+  (41 files, 0 changed), `flutter analyze` (no issues) and `flutter test` all passed on Ubuntu.
+- `build_windows` — success; the build took **93 s** with the Flutter, pub and `build/windows`
+  caches restored (215 s cold). The same four bundle assertions passed.
+- `where nuget` → `C:\ProgramData\Chocolatey\bin\nuget.exe` (see the supply-chain note above).
+
+### Verified (how)
+
+- 115/115 tests pass, `dart format --set-exit-if-changed .` clean, `flutter analyze` clean —
+  **run locally** on Linux after the scaffold.
+- `flutter build linux --release` — **run locally**, succeeded with the new pins (via the local
+  override, which now resolves to the fork's `dndreader/windows` checkout).
+- Windows app **compiles and links** with all plugins, and the bundle contains the expected files and
+  no CEF — **CI run 1**, `build_windows` job.
+- The pinned fork SHA resolves from the public repo — CI `flutter pub get` fetched it (`Got
+  dependencies`), no override present on the runner.
+
+### Not verified
+
+- That the Windows app **starts**, shows a window, opens a PDF, or renders anything — never run.
+- That `WebView2Loader.dll` sitting beside `dndreader.exe` is what the plugin loads at runtime.
+- The hash-pinned `nuget.exe` download branch — CI used the runner's preinstalled NuGet.
+- Runtime behaviour of `jni`/`dartjni.dll` on Windows; it compiles, nothing more is claimed.
+- WebView2 sandbox state, Windows 11 behaviour — as plan §8.4.
+
+## W2 — The WebView2 search panel (2026-10-14, branch `feat/w2-webview2-panel`)
+
+### What was built
+
+- `lib/features/search/search_web_view_windows.dart` — `Webview2SearchWebView implements
+  SearchWebView` (~190 lines). The interface is unchanged and no shared code moved.
+  - `start`: `getWebViewVersion()` → `null`/empty means the Runtime is missing →
+    `SearchUnavailableException('The Microsoft Edge WebView2 Runtime is not installed.')`; then
+    stale-profile sweep, `create()` the profile folder, `initializeEnvironment(userDataPath:)`,
+    `initialize()`. Any `PlatformException` there (notably `environment_creation_failed`) becomes
+    `SearchUnavailableException` with a Windows reason; `environment_already_initialized` is reused.
+  - **No `additionalArguments`** are passed — that is where upstream CEF's three dangerous flags
+    lived, so their removal is moot here.
+  - Event mapping: `url` → `onUrlChanged`; `loadingState == navigationCompleted` → `onLoadEnd`
+    (with the last URL seen); `onLoadError` → `onLoadError(url, status.name, status.index)`.
+  - `WebErrorStatus.operationCanceled` is **not** forwarded: it is what a superseded navigation
+    reports, and the session treats any load error as "failed". (Decision from reading the
+    plugin; not observed.)
+  - `setPopupWindowPolicy(sameWindow)` — the CEF fork's `OnBeforePopup` loads the target URL in the
+    same view (`common/webview_handler.cc:161-176`), so `target=_blank` results stay in the panel
+    instead of opening a separate native window.
+  - `setDevToolsEnabled(false)`; the `Webview` widget gets a `permissionRequested` delegate that
+    **denies** every browser permission request (camera, microphone, location, notifications,
+    clipboard-read) rather than letting WebView2 prompt. Both are choices of mine, not in the plan.
+  - Teardown (`dispose()` and an `AppLifecycleListener.onExitRequested`): `clearCookies()`,
+    `clearCache()`, controller `dispose()`, then delete the profile folder, retrying 10 × 300 ms
+    while WebView2's processes exit. Runs once.
+- `lib/features/search/search_profile.dart` — the throwaway profile and the stale sweep (W2.1),
+  split into a **pure** `decideSweep()` and a thin IO layer (`SearchProfileStore`).
+  - Name must match `^dndreader-search-[0-9]+$` and is checked **before** anything is stat'ed.
+  - Entry type is read with `followLinks: false`; a link is refused without being resolved.
+  - The entry and the temp directory are both fully resolved, and the entry must equal
+    `<resolved temp><sep><name>` exactly (an exact comparison, not a prefix test; case-insensitive
+    only on Windows).
+  - Own pid is never swept. Not in the plan, added because it is necessary: a **live second
+    instance** has its own `dndreader-search-<pid>` folder, so each instance holds an exclusive
+    lock on `<folder>\.dndreader-lock` for its lifetime and the sweeper refuses a folder it cannot
+    lock. A folder with no lock file is swept only once it is 60 s old. (A pid-liveness check was
+    rejected: pids are reused, and it needs either a process spawn or a new direct dependency.)
+  - The delete of our own folder re-runs the direct-child check and refuses a symlink.
+- Factory: `Platform.isWindows` → `Webview2SearchWebView`; Linux/macOS stay on
+  `CefSearchWebView`. **Deviation from the plan's "conditional import":** Dart's conditional
+  imports select on `dart.library.*`, not on the operating system, so they cannot separate Windows
+  from Linux; the choice is a run-time `Platform` check and both packages are compiled everywhere.
+  Only the matching class is ever constructed.
+- `unsandboxedDevOverrideActive` is always `false` on Windows, so the `_UnsandboxedBanner` and the
+  override path do not exist there. `DNDREADER_GPU` is only read inside `CefSearchWebView` and is
+  therefore ignored on Windows.
+- Panel text: the "can't run here" body names the **WebView2 Runtime** on Windows instead of the
+  Linux sandbox, and the consent note no longer claims cookies are "not kept on disk" on Windows
+  (it says the data is in a temporary folder deleted when you quit). That sentence would have been
+  false there.
+
+### Tests
+
+142 pass (115 + 27 new). `test/search/search_profile_test.dart` (23): the name matcher against 19
+bad names including `12a`, trailing newline, `/..`, full-width digits and a bare prefix; the
+direct-child check (sibling-prefix, nested, elsewhere); every `decideSweep` refusal (name, symlink,
+non-directory, unresolved, outside temp ×4, own pid, in use, too new); and real-directory runs:
+sweeps only stale folders of ours, **a symlink to an outside directory is neither followed nor
+removed** and the outside files survive, a symlink to a same-named directory, a held lock, a fresh
+lock-less folder, a missing temp directory, and `delete()` refusing a symlinked profile path.
+`test/search/search_panel_text_test.dart` (4). The webview itself is never driven.
+
+Limits of those tests: they run on Linux, where `FileLock.exclusive` is per-process, so a lock
+**held by another process** is exercised through an injected probe, not for real; Windows junctions
+(as opposed to symlinks) and Windows path casing are covered only by the pure functions.
+
+### Windows 11 capture border (plan W2)
+
+**Read:** the plugin builds its capture item with `CreateGraphicsCaptureItemFromVisual` — a
+*Composition visual*, not a window or monitor (`texture_bridge.cc:19`) — and calls
+`StartCapture()` without setting `IsBorderRequired`; the package exposes no API for it. My reading
+of Microsoft's documentation is that the yellow border is drawn for window/display capture, which
+this is not, so it is likely absent — but **not verified**, and it stays on the owner's Windows 11
+checklist. Not a divergence recorded as fact.
+
+### Verified (how)
+
+- 142 tests, format and analyze clean, Linux release build — **run locally**.
+- Windows compile and the 142 tests on Ubuntu — **CI run `38515229190`**, both jobs green. This
+  proves compilation only.
+
+### Not verified
+
+- That the panel starts, loads Google, scrolls, goes back, or fails closed with the Runtime absent —
+  **never run on Windows**.
+- That `getWebViewVersion()` returns `null` (rather than throwing) when the Runtime is missing —
+  taken from the package's documentation (**read**).
+- That `AppLifecycleListener.onExitRequested` fires when the Windows window is closed (**read**
+  from Flutter docs, not observed); if it does not, the folder is removed by the next launch's
+  sweep, not at quit — which the owner's checklist item "folder gone after quit" will show.
+- That denying permissions or disabling DevTools has no visible effect on Google results.
+- The lock-based liveness check across two real processes on Windows.
+
+## W3 — Native runner seams (2026-10-14, branch `feat/w3-runner-seams`)
+
+### What was built (all in `windows/runner/` unless stated)
+
+- **`dndreader/window` channel** (`flutter_window.cpp`): `flutter::MethodChannel<EncodableValue>` over
+  `StandardMethodCodec`, created after `RegisterPlugins`. `setFullscreen` takes a **bare bool**
+  (anything else → `bad-args` error, as on Linux), replies `void`; any other method →
+  `NotImplemented`. `isFullscreen` is not implemented (no Dart caller, per the plan).
+- **Fullscreen** is emulated: on enter the style and `WINDOWPLACEMENT` are saved, `WS_OVERLAPPEDWINDOW`
+  stripped and the window sized to the monitor (`MonitorFromWindow`/`GetMonitorInfo`); on exit the
+  style and placement are restored (a maximized window returns maximized).
+  **`fullscreenChanged(bool)` is pushed from the runner** after each change, because no window-manager
+  event exists to observe. Dart's `_fullscreen` is only ever updated by this push.
+- **Window size** (`window_settings.{h,cpp}`, new): `%APPDATA%\dndreader\window-size` (`"W H"`) via
+  `SHGetKnownFolderPath(FOLDERID_RoamingAppData)`. Same constants as `my_application.cc`: default
+  **1100×760**, accepted range width 480–10000 / height 360–10000, anything else falls back to the
+  default. Sizes are stored in **logical** pixels (`GetWindowRect` ÷ `GetDpiForWindow/96`), because
+  `Win32Window::Create` scales the requested size by the monitor's DPI. Saves are **debounced
+  500 ms** (`SetTimer`, restarted by every `WM_SIZE` and `WM_EXITSIZEMOVE`; minimise ignored) and
+  **skipped while maximised, minimised or full screen**, mirroring the Linux rule.
+- `main.cpp`: window title is **`DNDReader`** (the template's `dndreader`), size comes from
+  `LoadWindowSize()`.
+- **Focus**: `SearchWebView.releaseFocus()` added to the interface (CEF: no-op; Windows:
+  `WebviewController.releaseFocus()`; fake: counted). `ReaderScreen` calls it when the panel closes,
+  alongside the existing `_focusReader()`. The package already reclaims focus on a click outside the
+  webview; this covers closing by keyboard.
+
+### Confirmed in the generated runner (read)
+
+- **Command-line `.pdf` argument reaches Dart.** `main.cpp` calls `GetCommandLineArguments()` and
+  `project.set_dart_entrypoint_arguments(...)`; `utils.cpp` skips `argv[0]` and converts the rest
+  to UTF-8. `_pdfFromArgs` therefore sees what "Open With" passes. Not run.
+- **Black view background** (Linux `fl_view_set_background_color`): not reproduced. The Windows
+  window class has `hbrBackground = 0` and the window is not shown until the first Flutter frame
+  (`SetNextFrameCallback → Show()`), so there is no pre-frame white flash to colour. **Read**, not
+  observed.
+- `isFullscreen`: not implemented, see above.
+
+### Build issue found by CI
+
+First CI run failed to compile `window_settings.cpp`: `knownfolders.h` was included before
+`windows.h` (`EXTERN_C`/`GUID` undefined). Fixed by including `windows.h` first; run
+`38516722765` is green. This is exactly the class of error only a Windows build finds.
+
+### Tests
+
+142 pass; one new assertion — closing the panel with Esc calls `releaseFocus()` once
+(`test/widget/empty_state_test.dart`). The C++ is **not unit-tested**: there is no native test
+harness here, and CI only compiles it.
+
+### Verified (how)
+
+- Runner C++ compiles and links — **CI run `38516722765`** (`build_windows`), after one fix.
+- Dart: format, analyze, 142 tests — local and CI `analyze_test`.
+
+### Not verified
+
+- That `setFullscreen` works at all: that the frame strips, the monitor is covered, the taskbar is
+  hidden, and that `F11`/`Esc` and the header icon behave — **never run**.
+- That window size restores, that a drag-resize saves once, that the DPI handling is right on a
+  scaled display or when moved between monitors.
+- Focus: whether the package's reported "focus bouncing" occurs in this app, and whether
+  `releaseFocus()` on close is sufficient. Plan §W3.4 says investigate on Windows; not done.
+- That `%APPDATA%\dndreader` can be created on a locked-down profile (failures are silent by design).
+
+## W4 — Reader ergonomics and honesty on Windows (2026-10-14, branch `feat/w4-ergonomics`)
+
+### What changed
+
+- **Mouse wheel is per-platform** (`PdfView.wheelScrollFactorFor`): Linux stays **2.0**, Windows is
+  **1.0**. The plan said to retune "by measurement" and I cannot measure on Windows, so this is
+  derived from source instead: I fetched the Flutter engine at this SDK's revision
+  (`abaf9c5`, `engine/src/flutter/shell/platform/windows/flutter_window.cc`) and **read**
+  `UpdateScrollOffsetMultiplier()` — the per-notch scroll is `lines_per_scroll × 100/3` px, with
+  `lines_per_scroll` from `SPI_GETWHEELSCROLLLINES` (default 3), i.e. **100 px per notch** by
+  default and following the user's Windows setting. Linux's is `53` (`fl_scrolling_manager.cc`).
+  Linux 53 × 2.0 ≈ 106 px; Windows 100 × 1.0 = 100 px — the same target. Keeping 2.0 on Windows
+  would have been ~200 px per notch. **This is a calculation, not a measurement**: whether it
+  *feels* right is on the owner's checklist, and `arrowKeyStep = 60` is unchanged. `Ctrl`+wheel
+  zoom remains entirely pdfrx-internal.
+- **Document name** — new `lib/services/path_names.dart` `baseName()`, used by the header and the
+  Recents menu. On Windows it splits on `\` **and** `/`; elsewhere only `/` (a backslash is a legal
+  filename character on Linux). Trailing separators are ignored.
+- **About dialog** — `embedded_browser_info.dart`. On Windows it shows `Microsoft Edge WebView2
+  Runtime <version>` from `getWebViewVersion()` (or "not found") plus "Search data is kept in a
+  temporary folder that is deleted when you quit"; `kBundledChromium` (a CEF string that would be
+  **wrong** there) is shown on Linux only. `_showAbout` became `async` for the version lookup.
+- Three comments that became false were corrected: `window_service.dart` ("Linux and Windows"),
+  `pdf_picker.dart`, and `pdf_view.dart` (rewritten with the per-platform derivation).
+
+### Tests
+
+149 pass (142 + 7 new, `test/path_names_test.dart`): mixed and trailing separators on both
+conventions, the backslash-is-a-filename-character case, empty/root, both About variants, and the
+two wheel factors.
+
+### Verified (how)
+
+- Dart: format, analyze, 149 tests — local; CI recorded below.
+- The Windows per-notch distance — **read** from engine source at the matching revision.
+
+### Not verified
+
+- How the wheel *feels* on Windows, and the actual px per notch with the owner's mouse and system
+  setting (a Precision touchpad sends its own deltas, not covered by this reasoning).
+- That the About dialog's Runtime version lookup returns what the code expects.
+- On Windows, that `Platform.pathSeparator` is no longer used anywhere that matters (grep: no
+  remaining `split(Platform.pathSeparator)` in `lib/`).
+
+## W5 — Packaging (2026-10-14, branch `feat/w5-packaging`)
+
+### What was built
+
+- `packaging/windows/dndreader.iss` — Inno Setup 6.3+. Per-user by default (`PrivilegesRequired=lowest`
+  with the dialog override, so it can be installed per-machine); `MinVersion=10.0.17763` (Windows 10
+  1809), x64 only; no signing certificate.
+  - **`.pdf` association**: ProgID `DNDReader.pdf` with `shell\open\command` →
+    `"{app}\dndreader.exe" "%1"`, plus `OpenWithProgids` under `.pdf` and an `Applications\dndreader.exe`
+    entry. All under `HKA\Software\Classes` (HKCU for a per-user install). It **offers** DNDReader in
+    "Open with"; it does not seize the default (Windows 10+ leaves that to the user).
+  - **WebView2 Runtime**: detected by the `pv` value under
+    `Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}` in
+    `HKLM32` (WOW6432Node) and `HKCU`; absent/empty/`0.0.0.0` = missing. If missing, the bundled
+    ~1.8 MB `MicrosoftEdgeWebview2Setup.exe` is extracted to `{tmp}` and run with `/silent /install`.
+- `packaging/windows/build-installer.sh` — reads `kAppVersion` with the **same `sed`** as
+  `build-deb.sh`, copies the plugin's BSD-3 `LICENSE` plus a short notices README into
+  `{app}\licenses`, and calls `ISCC`. The bootstrapper is gitignored.
+- CI (`windows.yml`, `build_windows` job): fetches the bootstrapper from Microsoft's
+  `go.microsoft.com/fwlink/p/?LinkId=2124703`, **fails the build unless its Authenticode signature is
+  `Valid` and issued to Microsoft Corporation** (there is no stable hash to pin — Microsoft updates
+  the file), installs Inno Setup if the image lacks it, builds the installer, uploads it, then runs a
+  silent install / launch / uninstall smoke test (`continue-on-error`, so a failure is shown rather
+  than hidden).
+- **No** AppArmor analogue and **no** Windows `verify-sandbox.sh` — the sandbox belongs to Microsoft's
+  Runtime, not to us (plan §3.5).
+
+### Evidence — CI run `38518338633` (both jobs green)
+
+- Bootstrapper: signature `Valid`, `CN=Microsoft Corporation`, 1,860,304 bytes.
+- Installer: `DNDReader-0.1.5-setup-x64.exe`, ~15 MB (artifact 14,963,459 B); the whole bundle is 37 MB
+  uncompressed. Both are well under the plan's ~40 MB estimate because CEF is absent.
+- **Executed on a `windows-latest` runner** by the smoke step:
+  - silent install exit code 0; `dndreader.exe`, `WebView2Loader.dll`, `flutter_windows.dll`,
+    `licenses\README.txt` and `unins000.exe` present in the install dir;
+  - HKCU registry: `DNDReader.pdf\shell\open\command` =
+    `"<dir>\dndreader.exe" "%1"`, and `OpenWithProgids` lists `DNDReader.pdf`;
+  - `dndreader.exe` **was still running after 15 s** and its main window title was `DNDReader`
+    (W3's title change, observed);
+  - `%APPDATA%\dndreader\window-size` **was written**, containing `1044 760` — W3's persistence code
+    ran. (1044 rather than the 1100 default is because the runner's virtual display is evidently
+    1024 px wide, so Windows clamped the window; this is not a defect and the height is 760.)
+  - silent uninstall exit code 0, install dir and the ProgId key removed.
+- The runner already had the WebView2 Runtime, so the **bootstrap branch of the installer was not
+  executed**. NuGet was again the runner's own (`C:\ProgramData\Chocolatey\bin\nuget.exe`).
+
+### What this does and does not show
+
+It shows the installer builds, installs and uninstalls cleanly and the app **starts and stays up** on
+a Windows runner without a PDF argument. A hosted runner is not a desktop a person is using: it says
+nothing about rendering, the panel, input, focus, or the Windows 10 machine the owner will use.
+
+### Not verified
+
+- The WebView2 bootstrapper path on a machine **without** the Runtime — the installer's `Check`
+  expression and the `/silent /install` invocation are **read** from Microsoft's documentation only.
+- That Explorer's "Open with" / double-click actually launches DNDReader with the file (only the
+  registry values were checked).
+- Per-machine (admin) install behaviour, upgrade-over-existing, and the installer on Windows 10 (the
+  runner is a newer Windows Server image).
+- The Inno Setup version used (installed by the image or Chocolatey; the exact version was not
+  recorded by this run).
+
+## W6 — Documentation and handover (2026-10-14, branch `feat/w6-docs`)
+
+- `README.md`: Status gains a Windows row that says exactly how far the port has been taken (built,
+  packaged and started in CI; nothing else observed); the search-panel row, prerequisites/build
+  steps, "What leaves your device" and limitations 5, 7, 9, 10, 11, 12 are now per-platform. The
+  privacy statement is explicitly *discarded when you quit* on Windows, not *never written to disk*.
+- `docs/implementation-plan.md` §9 items 5, 7, 9, 10, 11, 13 and the Chromium-cadence risk row carry a
+  Windows note: the Chromium-update duty and the AppArmor requirement do not apply, the privacy
+  guarantee is weaker, `xclip` is irrelevant, and the bundle-size/software-rendering item is CEF-only.
+  Nothing else in that document was changed.
+- `docs/completion-report-windows.md`: delivered work, milestones with CI run ids, the engine, trust
+  and privacy decisions with their evidence, every place I departed from or added to the plan, what is
+  not verified, and the ordered owner checklist (17 steps).
+
+### Verified (how)
+
+Final local checks on the branch head are recorded in the completion report's §1 and §9 and were run
+for this milestone: `dart format --set-exit-if-changed .`, `flutter analyze`, `flutter test` (149),
+`flutter build linux --release`.
+
+### Not verified
+
+Everything listed in `docs/completion-report-windows.md` §7. In particular, nothing about how the
+Windows app looks or behaves has been observed by anyone.
+
+## Follow-up: D4 and D2 from the Windows verification (2026-10-14, Ubuntu session)
+
+Source: `docs/windows-verification/REPORT.md`. Branches `fix/d4-page-field-focus` (`d47c9d1`) and
+`fix/d2-sweep-at-launch` (`979aa60`), merged into `feat/windows-port`.
+
+- **D4 reproduced on Linux** with the real app (`flutter test integration_test -d linux`, Flutter-level key
+  injection): shared bug, not Windows-specific. Fixed in `ReaderScreen._onPageEditDone`. 3 of 4 integration
+  assertions failed before, 4/4 pass after.
+- **D2**: the stale-profile sweep moved from the search view's `start()` to `main()` at launch, in a background
+  isolate; Windows only; guards unchanged; 4 new end-to-end unit tests.
+- Tests: 149 → **155** (`test/widget/page_field_focus_test.dart` ×2, `test/search/search_profile_test.dart` ×4).
+  `dart format`, `flutter analyze` clean; `flutter build linux --release` succeeds and the built app opens
+  `outline.pdf` and runs.
+- **Not verified:** everything on Windows. The Linux app was driven with in-Flutter key events only.
+
+## Follow-up: D1, D3, D5, D6, D7 (2026-10-14, Windows session)
+
+Branches off `feat/windows-port`, each merged `--no-ff`: `fix/test-profile-path-separator`, `fix/d1-quit-crash`,
+`fix/d3-load-error-and-back`, `fix/d5-window-fit-work-area`, `fix/d6-d7-branding-and-uninstall`,
+`fix/d1b-shutdown-timing`. First time the toolchain (Flutter 3.47.7, VS Build Tools 17.14, Inno Setup 6.7.3) and
+the test suite ran on Windows.
+
+- **Test suite on Windows:** 154/155 before (a `/` literal in an expected profile path), 155/155 after; now 170.
+- **D1** — root cause found with a debug build and a native trace: the runner sends `WM_CLOSE` to `DestroyWindow`
+  (47 ms to `WM_DESTROY`) and the engine never sends an exit request, so `onExitRequested` never ran and the
+  WebView2 environment was destroyed inside `FlutterWindow::OnDestroy()`, which faulted. Fix: the runner defers
+  `WM_CLOSE`, calls `prepareToClose` on `dndreader/lifecycle`, and closes on Dart's reply or a 6 s backstop;
+  `lib/services/app_shutdown.dart` runs registered hooks (4 s cap). **Verified** on debug and release: three quit
+  paths, no Application Error event, nothing left. **Not eliminated:** a quit with a heavy live page was 2.5–8 s
+  in 3 of 11 release runs (profile delete retrying while WebView2 exits); the launch sweep recovers it.
+- **D3** — real status `WebErrorStatus.unknown` for a superseded challenge navigation. View pairs an error with its
+  own `NavigationCompleted`; session holds ambiguous errors 5 s, recovers from `failed`, ignores `__cf_chl_*`
+  hops, and Back reloads our previous page when the browser says it cannot go back.
+- **D5** — `FitToWorkArea` (header-only, 184 checks in `windows/runner/test/`, run by `windows.yml`).
+- **D6/D7** — brand icon from `packaging/linux/deb/dndreader.svg`, names, publisher; whole
+  `Applications\dndreader.exe` key and user data removed on uninstall (decision recorded in the commit).
+- **Method notes:** `flutter run -d windows --debug` with its log captured; synthetic input via
+  `docs/windows-verification/tools/input-helpers.ps1`; dead-proxy runs use `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`
+  so no query reaches Google.
+
+## Follow-up: Linux regression pass on the Windows port's shared changes (2026-10-14, Ubuntu)
+
+Details and evidence: `docs/windows-verification/REPORT.md` §9.
+
+- **A real regression was found and fixed:** the D3 "recover from failed on load-end" rule turned a CEF load
+  failure into a successful load (CEF raises a load-end for the failed URL right after the error). Reproduced
+  offline on the real Linux app; fixed by `FailedLoadEndFilter` in the CEF view (`fix/linux-failed-load-end`).
+- Verified on the real Linux app: search, Back tracking, Open in browser (opener injected), scroll unchanged on
+  close, offline failure shown in 723 ms and recovered by Retry, clean quit in 0.3 s, no search data on disk.
+- The Back divergence (Windows: webview history; Linux: session list + `goBack()`) is **deliberate**; not
+  reproduced on Linux.
+- Tests 170 → 173. `dart format`, `flutter analyze` clean; `flutter build linux --release` succeeds.
+- **Not verified:** the sandboxed path (needs root for AppArmor), real disconnect, real link clicks, the
+  Cloudflare gate on Linux, everything on Windows.
+
+## Linux release candidate 0.2.0 (2026-10-14, branch `release/0.2.0-rc`, Ubuntu)
+
+Version bumped 0.1.5 → 0.2.0; `.deb` built (341,599,198 B, `Depends:` unchanged vs 0.1.5). Fail-closed,
+sandbox-on, offline, Back, scroll, quit and on-disk-residue checks run on the real app (debug build; release
+cannot be driven here) — see `docs/windows-verification/REPORT.md` §10 and
+`docs/linux-0.2.0-release-checklist.md`. One small fix: no `WebviewManager().quit()` when CEF never started.
+**Not verified:** the installed package and its AppArmor profile (needs the owner's `sudo`).
+
+## Pre-merge cleanup (2026-10-14)
+
+Before merging the Windows port to `main`: removed all verification screenshots and their references (the repo
+is public; some captures showed desktop context); removed local filesystem paths from the Windows plan;
+rewrote the 20 commits that carried a personal e-mail address in their metadata to the project's GitHub
+no-reply identity, and dropped the screenshots from history, so neither enters `main`; refreshed stale status
+text (README Windows row, both plans, completion report banner); deleted the consumed hand-over prompts and raw run logs under `docs/windows-verification/` (their findings live in `REPORT.md`); added `docs/README.md` (index) and
+`docs/windows-owner-test.md`; added `main` to the CI triggers.

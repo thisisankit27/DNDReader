@@ -41,6 +41,7 @@ class SearchSession extends ChangeNotifier {
     SearchWebView Function()? webViewFactory,
     UrlOpener? openUrl,
     this.loadTimeout = const Duration(seconds: 20),
+    this.errorGrace = const Duration(seconds: 5),
   }) : _factory = webViewFactory ?? SearchWebView.create,
        _openUrl = openUrl ?? _openExternally;
 
@@ -48,8 +49,14 @@ class SearchSession extends ChangeNotifier {
   final UrlOpener _openUrl;
   final Duration loadTimeout;
 
+  /// How long an ambiguous load error is held before it is shown. A challenge
+  /// interstitial (e.g. Cloudflare's) aborts the first navigation and then
+  /// loads the real page; showing "couldn't load" for those seconds is wrong.
+  final Duration errorGrace;
+
   SearchWebView? _webView;
   Timer? _timeout;
+  Timer? _errorGraceTimer;
   final List<String> _history = <String>[];
 
   SearchPhase _phase = SearchPhase.idle;
@@ -78,7 +85,16 @@ class SearchSession extends ChangeNotifier {
   /// Why the embedded browser is unavailable (phase [SearchPhase.unavailable]).
   String? get unavailableReason => _unavailableReason;
 
+  /// Whether the browser itself says it can go back, when it reports that.
+  /// Null for engines that do not.
+  bool? _webCanGoBack;
+
   /// Back is possible when this panel has navigated past the search page.
+  ///
+  /// Our own list of pages is the truth for *whether*; the browser's history
+  /// only decides *how*: a result link often replaces the search page's entry
+  /// (the browser then reports it cannot go back), so Back reloads the previous
+  /// page ourselves in that case.
   bool get canGoBack => _history.length > 1;
 
   /// Google asked for a cookie-consent choice (host-only detection).
@@ -117,7 +133,8 @@ class SearchSession extends ChangeNotifier {
       view
         ..onUrlChanged = _handleUrlChanged
         ..onLoadEnd = _handleLoadEnd
-        ..onLoadError = _handleLoadError;
+        ..onLoadError = _handleLoadError
+        ..onHistoryChanged = _handleHistoryChanged;
       try {
         await view.start(uri);
       } on SearchUnavailableException catch (e) {
@@ -142,6 +159,7 @@ class SearchSession extends ChangeNotifier {
   }
 
   void _beginLoading() {
+    _errorGraceTimer?.cancel();
     _phase = SearchPhase.loading;
     _loadedUrl = null;
     _timeout?.cancel();
@@ -160,6 +178,9 @@ class SearchSession extends ChangeNotifier {
       return true;
     }());
     if (_isErrorPage(url)) return;
+    // A bot-check interstitial's hop (…?__cf_chl_tk=…) is not a page the user
+    // navigated to; the real URL follows. Not a history entry, nothing to show.
+    if (_isChallengeUrl(url)) return;
     if (_history.isEmpty || !_sameEntry(_history.last, url)) {
       _history.add(url);
     } else {
@@ -180,14 +201,43 @@ class SearchSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Error names that often describe an aborted *intermediate* navigation (a
+  /// challenge page, a redirect hop) rather than the page failing for good.
+  static const Set<String> _ambiguousErrors = <String>{
+    'unknown',
+    'connectionAborted',
+    'redirectFailed',
+  };
+
   void _handleLoadError(String url, String errorText, int errorCode) {
     assert(() {
       debugPrint('[search] loadError $errorCode $errorText ($url)');
       return true;
     }());
     // The fork reports main-frame failures only. Never surface the raw text.
+    if (_ambiguousErrors.contains(errorText) && _phase != SearchPhase.failed) {
+      // Hold it: if the page then loads, there was no failure to show.
+      _errorGraceTimer?.cancel();
+      _errorGraceTimer = Timer(errorGrace, _fail);
+      return;
+    }
+    _fail();
+  }
+
+  void _fail() {
+    _errorGraceTimer?.cancel();
     _timeout?.cancel();
     _phase = SearchPhase.failed;
+    notifyListeners();
+  }
+
+  void _handleHistoryChanged(bool canGoBack) {
+    assert(() {
+      debugPrint('[search] historyChanged canGoBack=$canGoBack');
+      return true;
+    }());
+    if (_webCanGoBack == canGoBack) return;
+    _webCanGoBack = canGoBack;
     notifyListeners();
   }
 
@@ -199,16 +249,18 @@ class SearchSession extends ChangeNotifier {
       return true;
     }());
     if (_isErrorPage(url)) {
-      _timeout?.cancel();
-      _phase = SearchPhase.failed;
-      notifyListeners();
+      _fail();
       return;
     }
+    if (_isChallengeUrl(url)) return;
     // load-end also fires for sub-frames (ads, embeds, about:blank); only the
-    // page the panel is showing counts.
-    if (_phase == SearchPhase.loading &&
+    // page the panel is showing counts. A page that completes after an error
+    // (an aborted challenge navigation, a slow load past the timeout) did load,
+    // so it also recovers from `failed`.
+    if ((_phase == SearchPhase.loading || _phase == SearchPhase.failed) &&
         _currentUrl != null &&
         (url == _currentUrl || _sameEntry(url, _currentUrl!))) {
+      _errorGraceTimer?.cancel();
       _timeout?.cancel();
       _loadedUrl = url;
       _phase = SearchPhase.loaded;
@@ -217,6 +269,9 @@ class SearchSession extends ChangeNotifier {
   }
 
   static bool _isErrorPage(String url) => url.startsWith('chrome-error://');
+
+  /// Cloudflare's challenge hops carry a `__cf_chl_*` query parameter.
+  static bool _isChallengeUrl(String url) => url.contains('__cf_chl_');
 
   /// Two URLs are the same history entry when they only differ in parameters
   /// the page itself adds after loading (same host, path and `q`).
@@ -233,9 +288,19 @@ class SearchSession extends ChangeNotifier {
   Future<void> back() async {
     if (!canGoBack) return;
     _history.removeLast();
-    _currentUrl = _history.last;
+    final previous = _history.last;
+    _currentUrl = previous;
     _beginLoading();
-    await _webView?.goBack();
+    if (_webCanGoBack != false) {
+      // The browser has the entry (or does not report its history, as CEF):
+      // let it restore the page and its scroll position.
+      await _webView?.goBack();
+    } else {
+      // The browser said it cannot go back: the entry was replaced (result
+      // links often do that). Load the previous page again ourselves.
+      final uri = Uri.tryParse(previous);
+      if (uri != null) await _webView?.loadUrl(uri);
+    }
   }
 
   Future<void> retry() async {
@@ -262,6 +327,7 @@ class SearchSession extends ChangeNotifier {
   @override
   void dispose() {
     _timeout?.cancel();
+    _errorGraceTimer?.cancel();
     _webView?.dispose();
     _webView = null;
     super.dispose();

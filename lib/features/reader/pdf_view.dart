@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
 
@@ -21,10 +23,20 @@ class PdfView extends StatelessWidget {
     this.onFindMeaning,
   });
 
-  /// Mouse-wheel scroll multiplier. The Linux embedder reports about 53 px per
-  /// wheel notch; pdfrx's default of 0.2 turned that into ~10 px, which read as
-  /// painfully slow. 2.0 gives ~105 px per notch, close to a browser.
-  static const double wheelScrollFactor = 2.0;
+  /// Mouse-wheel scroll multiplier, per platform, aiming at ~100 px per notch
+  /// (close to a browser).
+  ///
+  /// The embedders differ: the Linux one reports about 53 px per notch, so
+  /// pdfrx's default of 0.2 gave ~10 px, which read as painfully slow; 2.0 gives
+  /// ~105. The Windows embedder reports `lines-per-notch × 100/3` px — 100 px at
+  /// the default of 3 lines, and it follows the user's system setting
+  /// (`flutter_window.cc`, `UpdateScrollOffsetMultiplier`) — so 1.0 gives ~100.
+  static double wheelScrollFactorFor({required bool windows}) =>
+      windows ? 1.0 : 2.0;
+
+  static final double wheelScrollFactor = wheelScrollFactorFor(
+    windows: Platform.isWindows,
+  );
 
   /// Pixels moved per arrow-key press.
   static const double arrowKeyStep = 60;

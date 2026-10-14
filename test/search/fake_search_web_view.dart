@@ -12,6 +12,7 @@ class FakeSearchWebView implements SearchWebView {
   final List<Uri> loaded = [];
   int backs = 0;
   int reloads = 0;
+  int focusReleases = 0;
   bool disposed = false;
 
   void Function(String url)? _onUrl;
@@ -22,6 +23,14 @@ class FakeSearchWebView implements SearchWebView {
   set onUrlChanged(void Function(String url)? callback) => _onUrl = callback;
   @override
   set onLoadEnd(void Function(String url)? callback) => _onEnd = callback;
+
+  void Function(bool canGoBack)? _onHistory;
+
+  @override
+  set onHistoryChanged(void Function(bool canGoBack)? callback) =>
+      _onHistory = callback;
+
+  void emitHistory({required bool canGoBack}) => _onHistory?.call(canGoBack);
 
   @override
   set onLoadError(
@@ -50,6 +59,8 @@ class FakeSearchWebView implements SearchWebView {
   Future<void> goBack() async => backs++;
   @override
   Future<void> reload() async => reloads++;
+  @override
+  Future<void> releaseFocus() async => focusReleases++;
   @override
   Widget get widget => const SizedBox(key: ValueKey('fake-webview'));
   @override
