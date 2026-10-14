@@ -1377,3 +1377,18 @@ for this milestone: `dart format --set-exit-if-changed .`, `flutter analyze`, `f
 
 Everything listed in `docs/completion-report-windows.md` §7. In particular, nothing about how the
 Windows app looks or behaves has been observed by anyone.
+
+## Follow-up: D4 and D2 from the Windows verification (2026-10-14, Ubuntu session)
+
+Source: `docs/windows-verification/REPORT.md`. Branches `fix/d4-page-field-focus` (`d47c9d1`) and
+`fix/d2-sweep-at-launch` (`979aa60`), merged into `feat/windows-port`.
+
+- **D4 reproduced on Linux** with the real app (`flutter test integration_test -d linux`, Flutter-level key
+  injection): shared bug, not Windows-specific. Fixed in `ReaderScreen._onPageEditDone`. 3 of 4 integration
+  assertions failed before, 4/4 pass after.
+- **D2**: the stale-profile sweep moved from the search view's `start()` to `main()` at launch, in a background
+  isolate; Windows only; guards unchanged; 4 new end-to-end unit tests.
+- Tests: 149 → **155** (`test/widget/page_field_focus_test.dart` ×2, `test/search/search_profile_test.dart` ×4).
+  `dart format`, `flutter analyze` clean; `flutter build linux --release` succeeds and the built app opens
+  `outline.pdf` and runs.
+- **Not verified:** everything on Windows. The Linux app was driven with in-Flutter key events only.
