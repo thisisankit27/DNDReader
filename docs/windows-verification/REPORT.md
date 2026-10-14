@@ -1,7 +1,9 @@
-# DNDReader Windows port — verification report and hand-off
+# DNDReader Windows port — verification report
 
-Written for: **another Claude Code session** (and the owner) picking this up cold — to fix the defects below on
-the Windows port, or to review how the claims were evidenced. It assumes no memory of earlier sessions.
+> **Status: all defects below are fixed** (see §0); this report is kept as the evidence record. Sections 1–8 describe
+> the first real-machine run as it was, against `a4dfa20`; §9–10 are the Linux passes.
+
+Written for: the owner and any reviewer judging how the Windows port's claims were evidenced.
 
 - **Subject:** branch `feat/windows-port` @ `a4dfa20`, installer `DNDReader-0.1.5-setup-x64.exe` from GitHub
   Actions run `38519350754` (sha256 `6df97f31661c29e1de8502a222b729b8355515bd25f646f16170db29e31e4fe3`, unsigned).
@@ -9,8 +11,7 @@ the Windows port, or to review how the claims were evidenced. It assumes no memo
 - **Method:** the installed app driven with ordinary synthetic mouse/keyboard input, observed through screenshots,
   process/registry/event-log inspection. **No source was changed.** Only `test_fixtures/*.pdf` were opened.
 - **Labels:** **verified** = observed on a running app; **read** = from source/docs; **not verified**.
-- Detail log with every step: [RESULTS.md](RESULTS.md). Screenshots taken during the run were **removed from the repository** before merge (they carried desktop context); every finding is stated in text with its measurements.
-  Input/screenshot helper used: [tools/input-helpers.ps1](tools/input-helpers.ps1).
+- The detailed step log and the input helper script used were removed before merge; the findings below carry the measurements. Screenshots taken during the run were **removed from the repository** before merge (they carried desktop context); every finding is stated in text with its measurements.
 
 ## 0. Status after the Windows fix session (read this first)
 
@@ -21,9 +22,9 @@ same Windows 10 / 150 % machine. **CI on the final head is still to be confirmed
 | # | Defect | Status | How it was verified |
 |---|---|---|---|
 | D1 | Crash on quit after a search; profile left behind | **Fixed** | The runner now defers `WM_CLOSE`, asks Dart to run shutdown hooks over `dndreader/lifecycle`, then closes. Real X-click, `Esc`→X and `CloseMainWindow`: **0 Application Error events, nothing left in `%TEMP%`**, ~0.5–0.8 s (debug and release). |
-| D2 | Sweep at first search, not launch | **Fixed** (Ubuntu session), **re-verified on Windows** | `REVERIFY-574c0e9.md`. |
+| D2 | Sweep at first search, not launch | **Fixed** (Ubuntu session), **re-verified on Windows** | Re-verified on the same machine after the Ubuntu fix. |
 | D3 | Spurious "Couldn't load results"; Back desync | **Fixed** | Gated click (dictionary.cambridge.org, thesaurus.com) shows the interstitial then the page, no failure overlay; Back returns to the results. Real `WebErrorStatus` logged: `unknown` (0) for the aborted challenge navigation. |
-| D4 | Shortcuts dead after page-field Enter | **Fixed** (Ubuntu session), **re-verified on Windows** | `REVERIFY-574c0e9.md`; the "focus outline persists" note was a mouse-hover misread (corrected there). |
+| D4 | Shortcuts dead after page-field Enter | **Fixed** (Ubuntu session), **re-verified on Windows** | Re-verified on the same machine; the "focus outline persists" note was a mouse-hover misread (corrected there). |
 | D5 | First-run window taller than work area at 150 % | **Fixed** | Real first run: `15,15 1650×1004`, bottom at 1019 inside a 1034 px work area (was 1650×1106). `FitToWorkArea` has a 184-check MSVC test, also run in CI. 100/125/200 % are verified by that test only. |
 | D6 | Default icon, "dndreader", no publisher | **Fixed** | Brand icon in title bar, taskbar and Open With; `FileDescription`/`ProductName` = DNDReader; Publisher `thisisankit27` in the uninstall entry. |
 | D7 | Uninstall leftovers | **Fixed** | Uninstall removed the `Applications\dndreader.exe` key, `%APPDATA%\dndreader`, `%APPDATA%\com.dndreader` and a seeded stale `%TEMP%\dndreader-search-*`; default `.pdf` handler untouched. **Decision:** settings are removed on uninstall (they hold recent-file paths); an upgrade keeps them. |
@@ -79,7 +80,7 @@ Each: what, how to reproduce, evidence, **leads** (read from source — hypothes
   **Control:** same session, never opening the panel → exit in 338 ms, no crash, nothing left.
   Abrupt `Stop-Process -Force` also leaves the folder (expected) with no orphaned WebView2 processes.
 - **Evidence.** Windows Application log: Application Error + WER (APPCRASH), same fault offset every time; fault
-  PIDs matched the sessions (appendix of RESULTS.md). The leftover folder was written to at the instant of the
+  PIDs matched the sessions (from the Windows Application log). The leftover folder was written to at the instant of the
   click — the profile was live when the process died.
 - **Leads.**
   - `lib/features/search/search_web_view_windows.dart` — `AppLifecycleListener.onExitRequested` → `_shutdown()` →
@@ -275,13 +276,14 @@ level; whether `onExitRequested` actually runs (D1 root cause).
 ## 8. Reproducing this run
 
 Download the artifact `dndreader-windows-installer` from the Actions run above (needs GitHub auth; artifacts
-are not public). Run it, then dot-source `tools/input-helpers.ps1` and drive the app. Hard-won gotchas are
-in that file's header (scan codes, `Move` alias, DPI awareness, foreground stealing). Crash events:
+are not public). Gotchas for driving the app with synthetic input: Flutter's Windows embedder maps keys from scan
+codes (a `keybd_event` with scan code 0 is ignored), call `SetProcessDPIAware` or coordinates are DPI-virtualised,
+and another window can take the foreground between calls. Crash events:
 `Get-WinEvent -FilterHashtable @{LogName='Application';ProviderName='Application Error'} | ? Message -match dndreader`.
 
 ## 9. Linux regression pass on the shared changes (Ubuntu session, 2026-10-14)
 
-Closes the gap flagged in `ORCHESTRATOR-HANDOFF.md` §4.3: the D1/D3 fixes changed shared Dart and the Linux app
+Closes the gap flagged by the Windows fix session: the D1/D3 fixes changed shared Dart and the Linux app
 had not been launched since. Test file: `integration_test/linux_regression_test.dart` (run with
 `LINUX_REGRESSION=online|offline|gated|quit flutter test integration_test/linux_regression_test.dart -d linux`).
 

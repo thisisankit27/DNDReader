@@ -7,7 +7,7 @@ independent reviewer judging how the claims below were evidenced. Every claim is
 > **Update (after this report was written).** A real-machine verification on Windows 10 found seven defects
 > (quit crash and leftover browsing data, spurious errors after a challenge page, shortcuts dead after the page
 > field, window taller than the work area, icon/publisher, uninstall leftovers); all are fixed and re-verified —
-> see `docs/windows-verification/REPORT.md` and `ORCHESTRATOR-HANDOFF.md`. §7's "not verified" list below is
+> see `docs/windows-verification/REPORT.md` §0. §7's "not verified" list below is
 > therefore partly superseded; what is still unverified is listed in `docs/windows-owner-test.md`.
 >
 > **Read this first.** A green CI run proves the app **compiles**, its **unit tests pass**, and — here — that
