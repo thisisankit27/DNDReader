@@ -23,6 +23,8 @@ AppId={{B7F4E0A2-5D3C-4E1A-9C58-6A1D2F0E7B34}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
+; Shown as the Publisher in Settings > Apps (the same maintainer name as the .deb).
+AppPublisher=thisisankit27
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
@@ -59,8 +61,19 @@ Root: HKA; Subkey: "Software\Classes\{#ProgId}"; ValueType: string; ValueData: "
 Root: HKA; Subkey: "Software\Classes\{#ProgId}\DefaultIcon"; ValueType: string; ValueData: "{app}\{#AppExe},0"
 Root: HKA; Subkey: "Software\Classes\{#ProgId}\shell\open\command"; ValueType: string; ValueData: """{app}\{#AppExe}"" ""%1"""
 Root: HKA; Subkey: "Software\Classes\.pdf\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue
-Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\shell\open\command"; ValueType: string; ValueData: """{app}\{#AppExe}"" ""%1"""; Flags: uninsdeletekey
+; The whole Applications\dndreader.exe key is removed on uninstall (not just
+; shell\open\command), or an empty "dndreader" entry stays in the Open With list.
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "{#AppName}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\shell\open\command"; ValueType: string; ValueData: """{app}\{#AppExe}"" ""%1"""
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".pdf"; ValueData: ""
+
+[UninstallDelete]
+; Uninstalling leaves nothing personal behind. The settings file keeps the recent
+; documents' paths, so it goes too. (An upgrade does not run the uninstaller.)
+Type: filesandordirs; Name: "{userappdata}\dndreader"
+Type: filesandordirs; Name: "{userappdata}\com.dndreader"
+; Search profiles that a crashed or killed session left in %TEMP%.
+Type: filesandordirs; Name: "{%TEMP}\dndreader-search-*"
 
 [Run]
 ; Elevated installs put the Runtime in per-machine, non-elevated per-user.

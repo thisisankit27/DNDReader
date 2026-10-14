@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.dndreader" "\0"
-            VALUE "FileDescription", "dndreader" "\0"
+            VALUE "CompanyName", "thisisankit27" "\0"
+            VALUE "FileDescription", "DNDReader" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "dndreader" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.dndreader. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 thisisankit27. All rights reserved." "\0"
             VALUE "OriginalFilename", "dndreader.exe" "\0"
-            VALUE "ProductName", "dndreader" "\0"
+            VALUE "ProductName", "DNDReader" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
