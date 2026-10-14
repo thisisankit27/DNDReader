@@ -74,6 +74,34 @@ abstract class SearchWebView {
   void dispose();
 }
 
+/// Pairs a failed navigation with the load-end its engine raises for it.
+///
+/// CEF (and WebView2) report a load *end* for a navigation that failed, right
+/// after the error, carrying the failed URL. That is not "the page loaded". The
+/// session accepts a load-end after an error as a recovery (a challenge page
+/// that finishes loading after an aborted hop), so an engine that raises the
+/// trailing end must not forward it: otherwise the failure is turned into a
+/// successful load the instant it is shown (observed on Linux, offline).
+class FailedLoadEndFilter {
+  String? _failedUrl;
+
+  /// Record that a main-frame navigation to [url] failed.
+  void failed(String url) => _failedUrl = url;
+
+  /// A new navigation starts: any pending pairing no longer applies.
+  void navigationStarted() => _failedUrl = null;
+
+  /// Whether a load-end for [url] is a real completion. False exactly once for
+  /// the failed URL.
+  bool shouldForwardEnd(String url) {
+    if (_failedUrl != null && url == _failedUrl) {
+      _failedUrl = null;
+      return false;
+    }
+    return true;
+  }
+}
+
 /// Whether the development override that permits an unsandboxed browser applies.
 ///
 /// A release build never honours it, whatever the environment says.
