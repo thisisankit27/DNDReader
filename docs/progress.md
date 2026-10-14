@@ -1417,3 +1417,18 @@ the test suite ran on Windows.
 - **Method notes:** `flutter run -d windows --debug` with its log captured; synthetic input via
   `docs/windows-verification/tools/input-helpers.ps1`; dead-proxy runs use `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`
   so no query reaches Google.
+
+## Follow-up: Linux regression pass on the Windows port's shared changes (2026-10-14, Ubuntu)
+
+Details and evidence: `docs/windows-verification/REPORT.md` §9.
+
+- **A real regression was found and fixed:** the D3 "recover from failed on load-end" rule turned a CEF load
+  failure into a successful load (CEF raises a load-end for the failed URL right after the error). Reproduced
+  offline on the real Linux app; fixed by `FailedLoadEndFilter` in the CEF view (`fix/linux-failed-load-end`).
+- Verified on the real Linux app: search, Back tracking, Open in browser (opener injected), scroll unchanged on
+  close, offline failure shown in 723 ms and recovered by Retry, clean quit in 0.3 s, no search data on disk.
+- The Back divergence (Windows: webview history; Linux: session list + `goBack()`) is **deliberate**; not
+  reproduced on Linux.
+- Tests 170 → 173. `dart format`, `flutter analyze` clean; `flutter build linux --release` succeeds.
+- **Not verified:** the sandboxed path (needs root for AppArmor), real disconnect, real link clicks, the
+  Cloudflare gate on Linux, everything on Windows.

@@ -278,3 +278,70 @@ Download the artifact `dndreader-windows-installer` from the Actions run above (
 are not public). Run it, then dot-source `tools/input-helpers.ps1` and drive the app. Hard-won gotchas are
 in that file's header (scan codes, `Move` alias, DPI awareness, foreground stealing). Crash events:
 `Get-WinEvent -FilterHashtable @{LogName='Application';ProviderName='Application Error'} | ? Message -match dndreader`.
+
+## 9. Linux regression pass on the shared changes (Ubuntu session, 2026-10-14)
+
+Closes the gap flagged in `ORCHESTRATOR-HANDOFF.md` §4.3: the D1/D3 fixes changed shared Dart and the Linux app
+had not been launched since. Test file: `integration_test/linux_regression_test.dart` (run with
+`LINUX_REGRESSION=online|offline|gated|quit flutter test integration_test/linux_regression_test.dart -d linux`).
+
+**How (and its limits).** The real Linux app with the real CEF webview and the real network, driven by
+pointer/key events injected *inside Flutter*. The CEF browser ran **unsandboxed** (the dev override on a debug
+build — the release bundle fails closed without the installed AppArmor profile, which needs root), so the
+sandbox/fail-closed path was **not** exercised. OS-level input still cannot be driven here; the window close for
+the quit check was a real `WM_DELETE_WINDOW` sent over X11 (`GDK_BACKEND=x11`), which is what the title-bar X
+sends. "Offline" was simulated with a dead proxy (`https_proxy=http://127.0.0.1:9`, loopback exempt), not by
+pulling a cable.
+
+### Found and fixed: a genuine Linux regression from the D3 change
+
+- **Reproduced.** Offline, Find meaning produced `loadError -130 ERR_PROXY_CONNECTION_FAILED`, then — in the
+  same instant — the panel went to `loaded`. The failure was swallowed.
+- **Cause.** CEF raises `OnLoadEnd` for the *failed* URL right after `OnLoadError`. The D3 session rule "a page
+  that completes after a failure recovers from `failed`" (`search_session.dart`, `_handleLoadEnd`) read that
+  trailing end as the page loading. On Windows the view already drops the trailing `NavigationCompleted`
+  (`_navigationFailed`), so it never arose there; the CEF view had no equivalent.
+- **Fix.** `FailedLoadEndFilter` (`search_web_view.dart`) used by `CefSearchWebView`: the load-end for exactly the
+  failed URL is not forwarded, once; any new navigation (`loadUrl`/`goBack`/`reload`) clears the pairing. The
+  session logic, and therefore the Windows behaviour, is unchanged. Three unit tests for the filter.
+- **Verified after the fix (Linux, offline):** failure shown in **723 ms**; still `failed` 10 s later; a refused
+  loopback connection fails in 145 ms and **Retry succeeds once the server is up**. Before the fix the same run
+  never observed `failed`.
+- Note that the existing unit test "a page that finishes loading after a failure recovers from it" is the rule
+  that exposed this; it stays correct for engines that do not raise a trailing end.
+
+### Verified unchanged on Linux (real app)
+
+| Check | Result |
+|---|---|
+| Open `prose.pdf`, select a word, `Ctrl+E` | Results loaded in ~1.1 s, Google, `canGoBack` false |
+| Two in-panel navigations, Back ×2 | `canGoBack` true, true, then Back → previous page, then Back → search page with `canGoBack` false: enabled state matched in every step |
+| Open in browser | Reported the page being shown (opener injected — a real `xdg-open` was **not** launched) |
+| Close panel | Document `visibleRect` identical before/after, scrolled to page 2 (not at the top) |
+| Error grace | The 5 s grace **does not govern CEF**: its ambiguous set is WebView2's names (`unknown`, `connectionAborted`, `redirectFailed`); CEF reports `ERR_*` strings, so every CEF error fails immediately (observed: 723 ms offline). **Read** from the CEF fork + observed |
+| `AppShutdown.install()` | Inert on Linux: no hook is ever registered by the CEF path, and its channel (`dndreader/lifecycle`) is not the runner's `dndreader/window`. Full screen/quit unaffected. **Read**; the quit result below is the behavioural check |
+| Quit after a search | Close request → 8 `dndreader` processes (main + CEF children) → 0 in **0.3 s**; no hang, no crash |
+| CEF "in-memory" claim | Nothing from this session's searches (terms, `example.com`, `iana.org`) appears anywhere under `~/.config/cef_user_data`; `Cookies`/`History`/`Login Data` there date from the first CEF initialisation and were not modified. **Caveat:** that directory *is* the CEF root cache and is written with browser metadata (Preferences, Local State, empty DB schemas, 122 MB of component data from earlier runs), and each run leaves a `/tmp/org.chromium.Chromium.*` socket directory behind. Neither contains search data; both predate this work, and the README's "cookies and storage in memory" claim is about search data |
+
+### Back divergence — decision: **deliberate, documented; no CEF change**
+
+- **Windows** (D3): Back follows the webview's own history (`historyChanged`), because WebView2 replaced
+  entries on challenge hops and the Dart-side list desynced.
+- **Linux**: Back still comes from the session's own list and calls CEF `goBack()` (CEF is not asked for its
+  history state: `onHistoryChanged` is a no-op).
+- **Evidence it is not desynced on Linux:** in the step table above Back's enabled state and destinations
+  matched across 3 navigations; and in a separate observation run, `thesaurus.com` (the D3 site) loaded from the
+  results page in ~5 s with **no failure overlay and no flapping**, `canGoBack` true, and Back returned to the
+  results page and disabled itself (further Back presses were correctly inert).
+- **Limits of that evidence:** the Cloudflare interstitial **did not appear** on this network, so the scenario
+  that desynced Windows was not actually reproduced on Linux; navigations were programmatic (`loadUrl`), not
+  link clicks. If Linux ever shows the desync, port the same `historyChanged` hook to the CEF view (the session
+  already supports it) — the cost is small.
+- **Why not port it now:** it would be an untestable change to a path that works in every observed case, and
+  CEF's history-change reporting in the pinned fork was not read or exercised.
+
+### Not verified (this pass)
+
+The sandboxed/fail-closed path (no root for the AppArmor profile); a real network disconnect and reconnect;
+real link clicks inside the panel; the Cloudflare gate on Linux; Wayland-native input; the `.deb`; anything on
+Windows.
