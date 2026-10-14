@@ -963,7 +963,7 @@ the owner demonstrates it; a green CI run proves compilation and unit tests, not
 |---|---|
 | W1 Scaffold, CI, green Windows build | **Done 2026-10-14** — both CI jobs green (run `38514280955`); see "W1" below |
 | W2 WebView2 search panel | **Done 2026-10-14** — CI green; compiles and unit-tested only, never run — see "W2" below |
-| W3 Native runner seams | not started |
+| W3 Native runner seams | **Done 2026-10-14** — CI green (compile only); nothing run — see "W3" below |
 | W4 Reader ergonomics and honesty | not started |
 | W5 Packaging | not started |
 | W6 Docs and handover | not started |
@@ -1180,3 +1180,68 @@ checklist. Not a divergence recorded as fact.
   sweep, not at quit — which the owner's checklist item "folder gone after quit" will show.
 - That denying permissions or disabling DevTools has no visible effect on Google results.
 - The lock-based liveness check across two real processes on Windows.
+
+## W3 — Native runner seams (2026-10-14, branch `feat/w3-runner-seams`)
+
+### What was built (all in `windows/runner/` unless stated)
+
+- **`dndreader/window` channel** (`flutter_window.cpp`): `flutter::MethodChannel<EncodableValue>` over
+  `StandardMethodCodec`, created after `RegisterPlugins`. `setFullscreen` takes a **bare bool**
+  (anything else → `bad-args` error, as on Linux), replies `void`; any other method →
+  `NotImplemented`. `isFullscreen` is not implemented (no Dart caller, per the plan).
+- **Fullscreen** is emulated: on enter the style and `WINDOWPLACEMENT` are saved, `WS_OVERLAPPEDWINDOW`
+  stripped and the window sized to the monitor (`MonitorFromWindow`/`GetMonitorInfo`); on exit the
+  style and placement are restored (a maximized window returns maximized).
+  **`fullscreenChanged(bool)` is pushed from the runner** after each change, because no window-manager
+  event exists to observe. Dart's `_fullscreen` is only ever updated by this push.
+- **Window size** (`window_settings.{h,cpp}`, new): `%APPDATA%\dndreader\window-size` (`"W H"`) via
+  `SHGetKnownFolderPath(FOLDERID_RoamingAppData)`. Same constants as `my_application.cc`: default
+  **1100×760**, accepted range width 480–10000 / height 360–10000, anything else falls back to the
+  default. Sizes are stored in **logical** pixels (`GetWindowRect` ÷ `GetDpiForWindow/96`), because
+  `Win32Window::Create` scales the requested size by the monitor's DPI. Saves are **debounced
+  500 ms** (`SetTimer`, restarted by every `WM_SIZE` and `WM_EXITSIZEMOVE`; minimise ignored) and
+  **skipped while maximised, minimised or full screen**, mirroring the Linux rule.
+- `main.cpp`: window title is **`DNDReader`** (the template's `dndreader`), size comes from
+  `LoadWindowSize()`.
+- **Focus**: `SearchWebView.releaseFocus()` added to the interface (CEF: no-op; Windows:
+  `WebviewController.releaseFocus()`; fake: counted). `ReaderScreen` calls it when the panel closes,
+  alongside the existing `_focusReader()`. The package already reclaims focus on a click outside the
+  webview; this covers closing by keyboard.
+
+### Confirmed in the generated runner (read)
+
+- **Command-line `.pdf` argument reaches Dart.** `main.cpp` calls `GetCommandLineArguments()` and
+  `project.set_dart_entrypoint_arguments(...)`; `utils.cpp` skips `argv[0]` and converts the rest
+  to UTF-8. `_pdfFromArgs` therefore sees what "Open With" passes. Not run.
+- **Black view background** (Linux `fl_view_set_background_color`): not reproduced. The Windows
+  window class has `hbrBackground = 0` and the window is not shown until the first Flutter frame
+  (`SetNextFrameCallback → Show()`), so there is no pre-frame white flash to colour. **Read**, not
+  observed.
+- `isFullscreen`: not implemented, see above.
+
+### Build issue found by CI
+
+First CI run failed to compile `window_settings.cpp`: `knownfolders.h` was included before
+`windows.h` (`EXTERN_C`/`GUID` undefined). Fixed by including `windows.h` first; run
+`38516722765` is green. This is exactly the class of error only a Windows build finds.
+
+### Tests
+
+142 pass; one new assertion — closing the panel with Esc calls `releaseFocus()` once
+(`test/widget/empty_state_test.dart`). The C++ is **not unit-tested**: there is no native test
+harness here, and CI only compiles it.
+
+### Verified (how)
+
+- Runner C++ compiles and links — **CI run `38516722765`** (`build_windows`), after one fix.
+- Dart: format, analyze, 142 tests — local and CI `analyze_test`.
+
+### Not verified
+
+- That `setFullscreen` works at all: that the frame strips, the monitor is covered, the taskbar is
+  hidden, and that `F11`/`Esc` and the header icon behave — **never run**.
+- That window size restores, that a drag-resize saves once, that the DPI handling is right on a
+  scaled display or when moved between monitors.
+- Focus: whether the package's reported "focus bouncing" occurs in this app, and whether
+  `releaseFocus()` on close is sufficient. Plan §W3.4 says investigate on Windows; not done.
+- That `%APPDATA%\dndreader` can be created on a locked-down profile (failures are silent by design).
