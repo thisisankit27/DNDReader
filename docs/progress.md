@@ -966,7 +966,7 @@ the owner demonstrates it; a green CI run proves compilation and unit tests, not
 | W3 Native runner seams | **Done 2026-10-14** — CI green (compile only); nothing run — see "W3" below |
 | W4 Reader ergonomics and honesty | **Done 2026-10-14** — see "W4" below; wheel feel unmeasured |
 | W5 Packaging | **Done 2026-10-14** — installer built and silently installed/uninstalled on a CI runner; see "W5" below |
-| W6 Docs and handover | not started |
+| W6 Docs and handover | **Done 2026-10-14** — `docs/completion-report-windows.md`; ready for review |
 
 ## W1 — Scaffold, CI, green Windows build (2026-10-14, branch `feat/w1-scaffold-ci`)
 
@@ -1352,3 +1352,28 @@ nothing about rendering, the panel, input, focus, or the Windows 10 machine the 
   runner is a newer Windows Server image).
 - The Inno Setup version used (installed by the image or Chocolatey; the exact version was not
   recorded by this run).
+
+## W6 — Documentation and handover (2026-10-14, branch `feat/w6-docs`)
+
+- `README.md`: Status gains a Windows row that says exactly how far the port has been taken (built,
+  packaged and started in CI; nothing else observed); the search-panel row, prerequisites/build
+  steps, "What leaves your device" and limitations 5, 7, 9, 10, 11, 12 are now per-platform. The
+  privacy statement is explicitly *discarded when you quit* on Windows, not *never written to disk*.
+- `docs/implementation-plan.md` §9 items 5, 7, 9, 10, 11, 13 and the Chromium-cadence risk row carry a
+  Windows note: the Chromium-update duty and the AppArmor requirement do not apply, the privacy
+  guarantee is weaker, `xclip` is irrelevant, and the bundle-size/software-rendering item is CEF-only.
+  Nothing else in that document was changed.
+- `docs/completion-report-windows.md`: delivered work, milestones with CI run ids, the engine, trust
+  and privacy decisions with their evidence, every place I departed from or added to the plan, what is
+  not verified, and the ordered owner checklist (17 steps).
+
+### Verified (how)
+
+Final local checks on the branch head are recorded in the completion report's §1 and §9 and were run
+for this milestone: `dart format --set-exit-if-changed .`, `flutter analyze`, `flutter test` (149),
+`flutter build linux --release`.
+
+### Not verified
+
+Everything listed in `docs/completion-report-windows.md` §7. In particular, nothing about how the
+Windows app looks or behaves has been observed by anyone.

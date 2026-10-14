@@ -566,10 +566,13 @@ hardware), Android (until M7), and `integration_test` (best-effort on Linux desk
    GPU compositing enabled, so scrolling may feel less smooth than a real browser. GPU compositing is
    available as an **explicit opt-in** (`DNDREADER_GPU=1`) and is **off by default** because with it the GPU
    process runs without its seccomp filter. Whether scrolling *feels* acceptable is the owner's judgement.
+   **Windows:** this item is CEF-specific. The Windows build uses WebView2 (≈37 MB bundle, ≈15 MB installer)
+   and `DNDREADER_GPU` is ignored there (`docs/windows-implementation-plan.md` §3.5).
 6. **Text-based PDFs only.** Scanned pages have no text layer — show "This page has no selectable
    text" rather than failing silently. No OCR.
 7. **Ubuntu is the only verified platform in the MVP.** The other four are architecturally
-   supported and unverified.
+   supported and unverified. *(Windows has since been ported; it is built, packaged and started in CI only —
+   see `docs/completion-report-windows.md`.)*
 8. **Unresolved policy question.** This implementation performs no scraping, parsing or automation
    — it navigates an embedded webview to a search URL in response to an explicit user click.
    Whether Google's terms permit loading Search inside a third-party application panel is
@@ -583,19 +586,26 @@ hardware), Android (until M7), and `integration_test` (best-effort on Linux desk
 9. **Chromium security-update cadence is this project's responsibility** (desktop only). Pinning
    CEF in a fork means DNDReader must ship Chromium security fixes itself, indefinitely; a bare
    `.deb` has **no automatic update channel**, so fixes reach users only when they install a new
-   package. See the bump policy in §10.
+   package. See the bump policy in §10. **Does not apply on Windows**, where the browser is Microsoft's
+   Evergreen WebView2 Runtime and its updates are Microsoft's.
 10. **The sandbox needs an AppArmor profile on Ubuntu ≥ 24.04** (installed by the `.deb`). If the
     sandbox cannot start, the embedded panel is disabled and results open in the system browser
     (fail closed) — the app never runs the embedded browser unsandboxed in a release build. An
     **AppImage is unsupported** on those systems. On kernels with user namespaces disabled it also
-    fails closed.
+    fails closed. **Linux only:** the AppArmor requirement has no Windows analogue — WebView2's sandbox is
+    Microsoft's, and no Windows `verify-sandbox.sh` exists (and none is claimed equivalent).
 11. **Search cookies and storage are in memory only** and are discarded on quit — nothing about
     searches persists on disk (a consent choice may reappear **once per launch**, where Google shows
     one). Behaviour behind an EEA/UK consent wall is **unverified**: none appeared in testing.
+    **Linux only. On Windows the guarantee is weaker, by an owner-accepted decision (2026-10-14):**
+    WebView2 cannot keep a profile in memory, so search data lives in `%TEMP%\dndreader-search-<pid>`
+    for the session, is cleared and deleted on quit, and a crash can leave a folder until the next
+    launch sweeps it. *Discarded when you quit*, not *never written to disk*.
 12. **The embedded panel is not a jail.** With the sandbox and web security on, result pages from
     third-party sites render at roughly a normal browser's posture; DNDReader does not restrict
     where in-panel navigation can go (a navigation delegate is a deferred product decision).
-13. **`xclip` is needed to paste** into the webview (the plugin shells out to it).
+13. **`xclip` is needed to paste** into the webview (the plugin shells out to it). **Linux only**; Windows
+    uses the native clipboard.
 
 ---
 
@@ -605,7 +615,7 @@ hardware), Android (until M7), and `integration_test` (best-effort on Linux desk
 |---|---|
 | **Google unusable in `webview_cef` on Ubuntu** — the single biggest risk | **M0 found it usable (one machine/network).** The M0 usability spike ran before any application code; §2's ladder to make Google work; if it cannot be made to work, the failure is documented and escalated as an explicit product decision (Google stays the intended engine — the URL is isolated in one constant so the switch is cheap *once decided*, not automatic) |
 | `webview_cef` is a community plugin carrying a central feature | Active (243 stars, Sept 2026 commits, CEF 149); M0 exercised it. We now depend on a **pinned fork**, so we also own its rebase cost: keep the diff small and deletion-heavy (`HARDENING.md`), rebase on upstream at least quarterly, and offer the opt-out/`rootCachePath`-style changes upstream. `desktop_webview_window` remains the degraded fallback (separate window) |
-| **Chromium security patch cadence** — standing risk | Pinning CEF 149 in a fork makes this project responsible for shipping Chromium security updates to its own users indefinitely, **on desktop only** (Android/iOS get a vendor-patched system WebView). **Bump policy:** the CEF version has one source of truth (`third/download.cmake` in the fork). Check CEF *stable-branch* builds at least monthly and on every Chrome stable security release. Target a rebuilt, released package within **14 days** of a Critical or exploited-in-the-wild fix and **30 days** otherwise; never release with a pin more than **60 days** behind the newest stable of its major. Every bump re-runs the sandbox-active and fail-closed checks (§8). With no apt repository there is no automatic delivery to users — a stated limitation, not a solved problem. The app shows its Chromium version in an About/diagnostics line. *(These intervals are proposed defaults, not measurements.)* |
+| **Chromium security patch cadence** — standing risk *(Linux/CEF only — on Windows it is Microsoft's, via the Evergreen WebView2 Runtime)* | Pinning CEF 149 in a fork makes this project responsible for shipping Chromium security updates to its own users indefinitely, **on desktop only** (Android/iOS get a vendor-patched system WebView). **Bump policy:** the CEF version has one source of truth (`third/download.cmake` in the fork). Check CEF *stable-branch* builds at least monthly and on every Chrome stable security release. Target a rebuilt, released package within **14 days** of a Critical or exploited-in-the-wild fix and **30 days** otherwise; never release with a pin more than **60 days** behind the newest stable of its major. Every bump re-runs the sandbox-active and fail-closed checks (§8). With no apt repository there is no automatic delivery to users — a stated limitation, not a solved problem. The app shows its Chromium version in an About/diagnostics line. *(These intervals are proposed defaults, not measurements.)* |
 | Sandbox cannot start on the user's system | Fail closed (§6): panel disabled, Open in browser. AppArmor profile installed by the `.deb`; fail-closed path tested, profile success path verified on a host/VM (§8) |
 | Google consent wall behind an in-memory profile (EEA/UK) | One long-lived webview ⇒ at most once per launch; URL-only detection + hint (§6); persistence opt-in deferred but the fork keeps an optional cache path. **Unverified** — not observable on the dev network |
 | CEF build friction (C++20, first-build download) | Prerequisites installed up front; **verified in M0** (7 min first build, no toolchain errors with clang 21 / cmake 4.2) |
