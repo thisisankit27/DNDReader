@@ -13,6 +13,9 @@ import 'search_web_view.dart';
 class CefSearchWebView implements SearchWebView {
   WebViewController? _controller;
   final FailedLoadEndFilter _failedLoads = FailedLoadEndFilter();
+
+  /// CEF was initialised by this view (the sandbox preflight passed).
+  bool _cefStarted = false;
   void Function(String url)? _onUrlChanged;
   void Function(String url)? _onLoadEnd;
   void Function(String url, String errorText, int errorCode)? _onLoadError;
@@ -53,6 +56,7 @@ class CefSearchWebView implements SearchWebView {
     } on WebviewSandboxException catch (e) {
       throw SearchUnavailableException(e.reason);
     }
+    _cefStarted = true;
     final controller = WebviewManager().createWebView(
       loading: const Center(child: CircularProgressIndicator()),
     );
@@ -111,6 +115,8 @@ class CefSearchWebView implements SearchWebView {
   void dispose() {
     _controller?.dispose();
     _controller = null;
-    WebviewManager().quit();
+    // Never initialised (fail-closed start): there is nothing to quit, and
+    // WebviewManager.quit() asserts that it was initialised.
+    if (_cefStarted) WebviewManager().quit();
   }
 }
