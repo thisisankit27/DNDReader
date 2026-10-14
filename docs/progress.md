@@ -814,3 +814,45 @@ drive Google's consent UI to manufacture evidence.
 
 ### State of the branch
 `main` is untouched (`da3813a`); everything is on `feat/mvp-reader`, ready for review. No PR was opened.
+
+## Post-MVP: reading ergonomics (2026-10-14, branch `feat/m7-reader-ergonomics`)
+
+Owner feedback after running the installed `.deb` (`verify-sandbox.sh` printed `PASS: 3 renderer(s) sandboxed`
+with label `dndreader (unconfined)` — i.e. the packaged AppArmor success path **was observed by the owner**).
+Three requests:
+
+### Built
+1. **Contents panel: collapse / expand.** Topics with sub-topics start collapsed, except the branch holding the
+   current page (ancestors of the last entry starting on or before it), so a long outline opens where you are.
+   A chevron toggles; the title navigates (the two are separate hit targets). `outline_panel.dart` is now stateful.
+2. **Scrollbars.** `document_scrollbars.dart`: vertical + horizontal bars driven by the viewer's own position
+   (follow wheel, drag, keys, contents navigation), draggable thumb, click on the track pages by 0.9 viewport,
+   each shown only on an axis that scrolls. They sit in the free area: offset by the open panels' widths, so a
+   bar is never hidden under the contents or search panel.
+   - Panels still overlay (no reflow, vertical position kept), but their widths are now passed to the viewer as
+     `boundaryMargin` (`PdfView.contentInsets`). pdfrx only re-applies a changed margin on its next interaction,
+     so `ReaderScreen._syncInsets` re-sets the current matrix after an inset change; the viewer then re-clamps.
+     Effect: with the search panel open the page **centres in the space left over** (and is horizontally
+     scrollable if wider) instead of sitting partly under the panel.
+3. **Mouse-wheel speed.** pdfrx's `scrollByMouseWheel` defaults to 0.2; Linux reports ~53 px per notch, so a notch
+   moved ~10 px. Set to 2.0 (`PdfView.wheelScrollFactor`); arrow keys 25 → 60 px.
+
+### Verified (how)
+- `dart format`, `flutter analyze`, `flutter test` (outline panel: 9 tests incl. collapsed-by-default, toggle does
+  not navigate, current branch auto-open, leaf has no toggle).
+- Driven in the debug build under Ubuntu 26.04 (Flutter-level pointer injection):
+  - wheel delta 53 → visible area moved 106 document units (formerly 0.2×53 ≈ 10.6 by the formula — the old
+    value was **not** re-measured);
+  - search panel open: page shifted left 220 units (half the 440 px panel) and returned on close, vertical
+    offset unchanged; vertical bar sits left of the panel, horizontal bar ends at the panel's edge when zoomed in;
+  - thumb drags moved the view (vertical top 164.6 → 512.8; horizontal left 232.4 → 343.1); a click on the
+    track advanced a page;
+  - contents: chevron expands/collapses; current branch open on first show. Screenshots:
+    `~/scratch/evidence/m7_*.png`.
+
+### Not verified
+- **Real mouse-wheel notch size on the owner's hardware** (53 px/notch is the Flutter Linux embedder's constant as
+  I understand it, not measured here). 2.0 is a single constant if it feels too fast or slow.
+- **Touchpad**: pan/zoom gestures bypass `scrollByMouseWheel`; their speed is unchanged and unjudged.
+- Scrollbar thumb drag at the document extremes with very large documents (only the 3-page fixtures were driven).
+- No widget test for `DocumentScrollbars` (needs a live pdfrx controller); covered by the driven run above.

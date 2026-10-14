@@ -47,7 +47,9 @@ void main() {
     );
   });
 
-  testWidgets('lists nested entries with page numbers', (tester) async {
+  testWidgets('sub-topics are collapsed until the topic is expanded', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _host(
         outline: [
@@ -58,8 +60,60 @@ void main() {
     );
     expect(find.text('1. Introduction'), findsOneWidget);
     expect(find.text('2. Method'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+    expect(find.text('2.1 Data'), findsNothing);
+
+    await tester.tap(find.byTooltip('Expand'));
+    await tester.pump();
     expect(find.text('2.1 Data'), findsOneWidget);
     expect(find.text('4'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Collapse'));
+    await tester.pump();
+    expect(find.text('2.1 Data'), findsNothing);
+  });
+
+  testWidgets('toggling a topic does not navigate', (tester) async {
+    PdfDest? picked;
+    await tester.pumpWidget(
+      _host(
+        outline: [
+          _node('Chapter', 2, [_node('Section', 3)]),
+        ],
+        onSelect: (d) => picked = d,
+      ),
+    );
+    await tester.tap(find.byTooltip('Expand'));
+    await tester.pump();
+    expect(picked, isNull);
+  });
+
+  testWidgets('the branch holding the current page starts expanded', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        currentPage: 5,
+        outline: [
+          _node('A', 1, [_node('A.1', 2)]),
+          _node('B', 4, [
+            _node('B.1', 5, [_node('B.1.a', 5)]),
+            _node('B.2', 7),
+          ]),
+        ],
+      ),
+    );
+    expect(find.text('A.1'), findsNothing);
+    expect(find.text('B.1'), findsOneWidget);
+    expect(find.text('B.2'), findsOneWidget);
+    // The current entry itself is reachable: its ancestors are open.
+    expect(find.text('B.1.a'), findsOneWidget);
+  });
+
+  testWidgets('a chapter without sub-topics has no toggle', (tester) async {
+    await tester.pumpWidget(_host(outline: [_node('Only', 1)]));
+    expect(find.byTooltip('Expand'), findsNothing);
+    expect(find.byTooltip('Collapse'), findsNothing);
   });
 
   testWidgets('tapping an entry reports its destination', (tester) async {

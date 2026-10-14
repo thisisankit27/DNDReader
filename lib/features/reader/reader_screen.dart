@@ -8,6 +8,7 @@ import 'package:pdfrx/pdfrx.dart';
 import '../../dev/dev_harness.dart';
 import '../../dev/selection_debug.dart';
 import '../../services/pdf_picker.dart';
+import 'document_scrollbars.dart';
 import 'empty_state.dart';
 import 'open_failure.dart';
 import 'outline_panel.dart';
@@ -262,45 +263,63 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
+  /// Panel insets last handed to the viewer (see [_syncInsets]).
+  EdgeInsets _appliedInsets = EdgeInsets.zero;
+
+  /// pdfrx applies a changed boundary margin only on its next interaction, so
+  /// a panel opening would leave the page under it. Re-applying the current
+  /// position makes the viewer re-clamp now: the page centres in the space the
+  /// panels leave free, and is scrollable if it is wider than that.
+  void _syncInsets(EdgeInsets insets) {
+    if (insets == _appliedInsets) return;
+    _appliedInsets = insets;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _path == null || !_controller.isReady) return;
+      _controller.value = _controller.value.clone();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasDocument = _path != null && !_failed;
 
-    final Widget body;
-    if (_path == null) {
-      body = EmptyState(
-        onOpen: _openPicker,
-        recents: _settings.settings.recents
-            .where((p) => File(p).existsSync())
-            .toList(growable: false),
-        onOpenRecent: _openPath,
-      );
-    } else if (_failed) {
-      body = OpenFailure(fileName: _title, onOpenAnother: _openPicker);
-    } else {
-      body = PdfView(
-        key: ValueKey('$_path#$_openSerial'),
-        documentRef: _documentRef!,
-        controller: _controller,
-        onPageChanged: (page) => setState(() => _pageNumber = page),
-        initialPage: _initialPage,
-        onViewerReady: (document) {
-          setState(() {
-            _pageCount = document.pages.length;
-            // The restored page is shown before any page-change event.
-            _pageNumber ??= _initialPage;
-          });
-          _applySavedZoom();
-          unawaited(_loadOutline(document));
-        },
-        onLoadFailed: () => setState(() => _failed = true),
-        onDocumentTap: _search.close,
-        onTextSelectionChange: (selection) {
-          _selection = selection;
-          _debug.onSelectionChanged(selection);
-          _action.onSelectionChanged(selection);
-        },
-      );
+    Widget bodyFor(EdgeInsets insets) {
+      if (_path == null) {
+        return EmptyState(
+          onOpen: _openPicker,
+          recents: _settings.settings.recents
+              .where((p) => File(p).existsSync())
+              .toList(growable: false),
+          onOpenRecent: _openPath,
+        );
+      } else if (_failed) {
+        return OpenFailure(fileName: _title, onOpenAnother: _openPicker);
+      } else {
+        return PdfView(
+          key: ValueKey('$_path#$_openSerial'),
+          contentInsets: insets,
+          documentRef: _documentRef!,
+          controller: _controller,
+          onPageChanged: (page) => setState(() => _pageNumber = page),
+          initialPage: _initialPage,
+          onViewerReady: (document) {
+            setState(() {
+              _pageCount = document.pages.length;
+              // The restored page is shown before any page-change event.
+              _pageNumber ??= _initialPage;
+            });
+            _applySavedZoom();
+            unawaited(_loadOutline(document));
+          },
+          onLoadFailed: () => setState(() => _failed = true),
+          onDocumentTap: _search.close,
+          onTextSelectionChange: (selection) {
+            _selection = selection;
+            _debug.onSelectionChanged(selection);
+            _action.onSelectionChanged(selection);
+          },
+        );
+      }
     }
 
     return CallbackShortcuts(
@@ -364,46 +383,69 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   search: _search,
                   child: SelectionDebugOverlay(
                     state: _debug,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(child: body),
-                        if (hasDocument)
-                          Positioned.fill(
-                            child: ListenableBuilder(
-                              listenable: _action,
-                              builder: (context, _) {
-                                if (!_action.available) {
-                                  return const SizedBox.shrink();
-                                }
-                                return SelectionPill(
-                                  repaint: _controller,
-                                  anchors: () {
-                                    final selection = _action.selection;
-                                    if (selection == null) return null;
-                                    return selectionAnchors(
-                                      _controller,
-                                      selection,
-                                    );
-                                  },
-                                  onPressed: _findMeaning,
-                                  onScrollSignal:
-                                      _controller.handlePointerSignalEvent,
-                                );
-                              },
-                            ),
-                          ),
-                        // Contents overlay the left edge, like the search panel
-                        // on the right: the document never reflows.
-                        if (hasDocument && _outlineVisible)
-                          Positioned.fill(
-                            child: LayoutBuilder(
-                              builder: (context, constraints) => Align(
-                                alignment: Alignment.centerLeft,
-                                child: SizedBox(
-                                  width: OutlinePanel.width.clamp(
-                                    0.0,
-                                    constraints.maxWidth * 0.8,
+                    // The panels overlay the document (it never reflows), so
+                    // their widths are tracked here: they become scrollable
+                    // room for the viewer and an inset for the scrollbars.
+                    child: ListenableBuilder(
+                      listenable: _search,
+                      builder: (context, _) => LayoutBuilder(
+                        builder: (context, constraints) {
+                          final maxWidth = constraints.maxWidth;
+                          final leftInset = hasDocument && _outlineVisible
+                              ? OutlinePanel.width.clamp(0.0, maxWidth * 0.8)
+                              : 0.0;
+                          final rightInset = _search.visible
+                              ? SearchPanel.widthFor(maxWidth)
+                              : 0.0;
+                          final insets = EdgeInsets.only(
+                            left: leftInset,
+                            right: rightInset,
+                          );
+                          _syncInsets(insets);
+                          return Stack(
+                            children: [
+                              Positioned.fill(child: bodyFor(insets)),
+                              if (hasDocument)
+                                Positioned.fill(
+                                  child: ListenableBuilder(
+                                    listenable: _action,
+                                    builder: (context, _) {
+                                      if (!_action.available) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return SelectionPill(
+                                        repaint: _controller,
+                                        anchors: () {
+                                          final selection = _action.selection;
+                                          if (selection == null) return null;
+                                          return selectionAnchors(
+                                            _controller,
+                                            selection,
+                                          );
+                                        },
+                                        onPressed: _findMeaning,
+                                        onScrollSignal: _controller
+                                            .handlePointerSignalEvent,
+                                      );
+                                    },
                                   ),
+                                ),
+                              if (hasDocument)
+                                Positioned.fill(
+                                  child: DocumentScrollbars(
+                                    controller: _controller,
+                                    leftInset: leftInset,
+                                    rightInset: rightInset,
+                                  ),
+                                ),
+                              // Contents overlay the left edge, like the search
+                              // panel on the right.
+                              if (hasDocument && _outlineVisible)
+                                Positioned(
+                                  left: 0,
+                                  top: 0,
+                                  bottom: 0,
+                                  width: leftInset,
                                   child: OutlinePanel(
                                     outline: _outline,
                                     currentPage: _pageNumber,
@@ -411,45 +453,27 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                     onClose: _toggleOutline,
                                   ),
                                 ),
-                              ),
-                            ),
-                          ),
-                        // The search panel overlays the right edge: the document
-                        // never reflows and never loses its scroll position.
-                        Positioned.fill(
-                          child: ListenableBuilder(
-                            listenable: _search,
-                            builder: (context, _) {
                               // No browser exists until the first search.
-                              if (_search.webView == null && !_search.visible) {
-                                return const SizedBox.shrink();
-                              }
-                              return LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final width = SearchPanel.widthFor(
-                                    constraints.maxWidth,
-                                  );
-                                  return Align(
-                                    alignment: Alignment.centerRight,
-                                    child: SizedBox(
-                                      width: width,
-                                      // Offstage keeps the browser laid out (and
-                                      // alive) while the panel is closed.
-                                      child: Offstage(
-                                        offstage: !_search.visible,
-                                        child: SearchPanel(
-                                          session: _search,
-                                          onClose: _search.close,
-                                        ),
-                                      ),
+                              if (_search.webView != null || _search.visible)
+                                Positioned(
+                                  right: 0,
+                                  top: 0,
+                                  bottom: 0,
+                                  width: SearchPanel.widthFor(maxWidth),
+                                  // Offstage keeps the browser laid out (and
+                                  // alive) while the panel is closed.
+                                  child: Offstage(
+                                    offstage: !_search.visible,
+                                    child: SearchPanel(
+                                      session: _search,
+                                      onClose: _search.close,
                                     ),
-                                  );
-                                },
-                              );
-                            },
-                          ),
-                        ),
-                      ],
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
