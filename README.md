@@ -77,7 +77,7 @@ flutter test
 flutter build linux --release
 
 packaging/linux/build-deb.sh          # → dist/dndreader_<ver>-1_amd64.deb
-sudo apt install ./dist/dndreader_0.1.0-1_amd64.deb
+sudo apt install ./dist/dndreader_0.1.1-1_amd64.deb
 ```
 
 The `.deb` is built for the Ubuntu release it is built on (its `Depends` are derived from the
