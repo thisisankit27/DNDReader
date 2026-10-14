@@ -1,0 +1,16 @@
+#!/bin/sh
+# Load the AppArmor profile that lets DNDReader create the user namespace its
+# embedded-browser sandbox needs. Failure is non-fatal on purpose: without the
+# profile the application fails closed (search panel disabled, "Open in
+# browser" offered) rather than running its browser unsandboxed.
+set -e
+if [ "$1" = configure ]; then
+  if command -v apparmor_parser >/dev/null 2>&1 \
+     && [ -d /sys/kernel/security/apparmor ]; then
+    if ! apparmor_parser -r -T -W /etc/apparmor.d/dndreader; then
+      echo "dndreader: could not load /etc/apparmor.d/dndreader;" >&2
+      echo "dndreader: the search panel will stay disabled until it is loaded." >&2
+    fi
+  fi
+fi
+exit 0

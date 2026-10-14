@@ -1,0 +1,12 @@
+#!/bin/sh
+# Unload the profile while its file still exists.
+set -e
+case "$1" in
+  remove|upgrade|deconfigure)
+    if [ "$1" = remove ] && command -v apparmor_parser >/dev/null 2>&1 \
+       && [ -d /sys/kernel/security/apparmor ]; then
+      apparmor_parser -R /etc/apparmor.d/dndreader 2>/dev/null || true
+    fi
+    ;;
+esac
+exit 0

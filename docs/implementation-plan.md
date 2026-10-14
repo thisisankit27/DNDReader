@@ -1,8 +1,9 @@
 # DNDReader — Implementation Plan (embedded Google Search, no AI)
 
-> **Status:** plan approved 2026-10-13. No application code exists yet.
-> **Next action:** the M0 feasibility spike in §2 — before writing any application code.
-> Progress and observations belong in `docs/progress.md` (created during M0).
+> **Status:** plan approved 2026-10-13; **updated 2026-10-14** after the M0 spike and the security
+> investigation (both recorded in `docs/progress.md`). Implementation proceeds on `feat/mvp-reader`.
+> **Milestone order (amended):** M1 → M2 → M3 (§5.1.1 gates) → **M0b hardened fork** → M4 → M5 → M6.
+> Progress and observations belong in `docs/progress.md`.
 
 ## Context
 
@@ -15,8 +16,9 @@ We are **not** building an AI explanation engine. Google provides the search exp
 whatever it chooses to show, which sometimes includes an AI Overview and sometimes does not. The
 product promises *search inside the reader*, never *an AI answer every time*.
 
-**Repository state:** empty. Branch `master`, no commits, remote
-`github.com/thisisankit27/DNDReader`.
+**Repository:** `github.com/thisisankit27/DNDReader`. `main` holds the plan and README;
+MVP work lands on the integration branch `feat/mvp-reader` (milestone branches merged `--no-ff`).
+Nothing is merged to `main` without the owner's explicit approval.
 
 **What this supersedes.** Two earlier drafts of this plan are void: one built a Tauri + Anthropic
 API reader, one built a Flutter + Gemini reader. Everything AI-related is **removed** — no Gemini,
@@ -24,8 +26,9 @@ no Claude, no Ollama, no API keys, no model selection, no provider abstraction, 
 context extraction, no response streaming, no backend, no database, no accounts. None of that
 infrastructure survives into this plan.
 
-**This session is planning only.** Its sole output is `docs/implementation-plan.md` and
-`README.md`. The implementation session starts at **M0** (§2 spike), then M1 onward.
+*History:* the first session was planning only (this document and `README.md`). M0 (the §2 spike)
+and a follow-up security investigation have since been executed; their results changed §1, §3, §7,
+§8, §9, §10 and §11 below.
 
 ---
 
@@ -64,20 +67,28 @@ at all; Tauri's docked-webview API is not ready on the MVP's own platform.
 
 One platform seam is accepted, deliberately and in one place: the **webview host**.
 
-- Desktop (Linux/Windows/macOS): **`webview_cef ^0.6.2`** — CEF 149, 243 stars, actively
-  maintained (last commits Sept 2026). Its README states it renders into a Flutter `Texture` so
-  web content composes with the rest of the Flutter UI, and documents `loadUrl`, `goBack`,
-  `goForward`, `reload`, user-agent at init, and cookie access — everything the panel needs. It
-  also states CEF downloads automatically on the first Linux build. **All of this is read from
-  documentation; none of it has been exercised yet — that is what M0 is for.**
+- Desktop (Linux/Windows/macOS): **a pinned, security-hardened fork of `webview_cef`**
+  (`github.com/thisisankit27/webview_cef`, branch `dndreader/hardened`, pinned by commit SHA —
+  **`0970b4447cb667dc4a512ba5350a39a253d6d273`**), based on upstream `main` at
+  `bb2dbcc` (2026-09-18). CEF 149; renders into a Flutter `Texture` so web content composes with the
+  Flutter UI. **M0 exercised this**: it builds on Ubuntu 26.04 and Google Search is usable in a
+  420–480 px panel (`docs/progress.md`).
+  **Why a fork, not `^0.6.2`:** (a) published 0.6.2 unconditionally disables web security, insecure-
+  content blocking, SameSite cookie protections and the Chromium sandbox, with no opt-out in its API;
+  (b) a per-application cache path (`rootCachePath`) exists only on unreleased upstream `main`;
+  (c) an in-memory request context and a sandbox preflight are needed. The fork's diff is kept small
+  and deletion-heavy (`HARDENING.md` in the fork) so it can be rebased and offered upstream.
 - Mobile (Android/iOS): **`webview_flutter ^4.14.1`** — official and boring, which is what we want.
 
 Both sit behind one `SearchWebView` interface (~60 lines of conditional wiring). All shared logic —
 reader, selection, action, panel chrome, URL building, preferences — is written once.
 
-**Costs accepted, stated plainly:** CEF makes the Linux/Windows/macOS bundle large (~150–250 MB);
-`webview_cef` notes Linux "still uses the software path", so panel scrolling may be less smooth
-than a native browser; CEF 149 requires a **C++20** toolchain.
+**Costs accepted, stated plainly:** CEF makes the Linux/Windows/macOS bundle large (~150–250 MB,
+**unmeasured for a release build**; the debug bundle was 1.8 GB); Linux uses the **software**
+rendering path — *verified in M0*: `--disable-gpu --disable-gpu-compositing` are active — so panel
+scrolling may be less smooth than a native browser (the feel is the owner's judgement; GPU
+compositing is evaluated in a time-boxed spike after M4); CEF 149 requires a **C++20** toolchain;
+and shipping Chromium makes this project responsible for Chromium security updates (§10).
 
 ---
 
@@ -106,11 +117,14 @@ percent-encoded and navigate to it. **Do not parse or scrape result HTML. Do not
 interaction. Do not attempt to defeat webview restrictions.** This is user-initiated ordinary
 browsing in an embedded view — nothing is extracted programmatically.
 
-### M0 spike — mandatory, and the first action of the implementation session
+### M0 spike — **executed 2026-10-13** (results: `docs/progress.md`)
 
-This planning session produces documentation only. **The implementation session begins with this
-spike, before any application code is written.** It is a throwaway Flutter app, time-boxed to
-about an hour.
+> **Outcome:** Google results rendered and were operable at 420/450/480 px, signed out; results,
+> scroll, click-through and `goBack()` worked; no consent wall or `/sorry` CAPTCHA appeared (one
+> machine, one network). The seven checks below are retained as the acceptance list; do not read
+> "executed" as "judged": checks 3 and 4 are the owner's call.
+
+The spike was a throwaway Flutter app, run before any application code was written.
 
 The question this plan cannot resolve from documentation is not "does the URL load" — a blank page,
 a consent wall, or an unreadable column all count as loading. **M0 must establish real usability.**
@@ -137,6 +151,8 @@ Also record the CEF first-build experience: download size, build time, and any t
 not to replace it casually. Stop at the first step that works; do not escalate past step 4.
 
 1. Set a current desktop Chrome user-agent via `WebviewManager().initialize(userAgent: …)`.
+   *(M0 finding: that parameter sets CEF's `user_agent_product` — a product token — not the full
+   UA string; CEF's default UA is already Chrome-149-based. The ladder was not needed.)*
 2. Try the public `&igu=1` query parameter, which historically renders a lighter results page.
    Test it; do not depend on it.
 3. If Google still proves unusable: **do not silently switch engines.** Write the specific observed
@@ -154,9 +170,25 @@ Anything beyond step 4 is out of scope by instruction.
 
 ## 3. Dependencies — the complete list
 
-`pdfrx ^2.6.5` · `webview_cef ^0.6.2` (desktop) · `webview_flutter ^4.14.1` (mobile) ·
-`url_launcher ^6.3.3` · `file_picker ^13.1.0` · `shared_preferences ^2.5.6`
-dev: `flutter_lints`, `integration_test`
+`pdfrx ^2.6.5` · `webview_cef` (desktop; **git dependency on the hardened fork, pinned by SHA** —
+see §1) · `webview_flutter ^4.14.1` (mobile) · `url_launcher ^6.3.3` · `file_picker ^13.1.0` ·
+`shared_preferences ^2.5.6`
+dev: `flutter_lints ^6.0.0`, `integration_test`
+(All versions re-checked against pub.dev on 2026-10-14; they satisfy Flutter 3.47.7 / Dart 3.13.5.)
+
+```yaml
+# pubspec.yaml (added in M4, after the fork exists)
+dependencies:
+  webview_cef:
+    git:
+      url: https://github.com/thisisankit27/webview_cef
+      ref: 0970b4447cb667dc4a512ba5350a39a253d6d273   # never a branch name
+```
+
+For local development, an untracked `pubspec_overrides.yaml` may point at a local checkout whose
+`third/cef` symlinks to a single shared CEF tree (a second 3 GB copy is avoided).
+
+**Runtime (not pub):** `xclip` — the plugin shells out to it for paste in the webview.
 
 No HTTP client, no secure storage, no state-management library, no markdown renderer — none are
 needed any more.
@@ -235,8 +267,11 @@ anchoring. `PdfPageText` exposes `fullText`, `charRects`, `pageNumber`.
 - Flip above/below and clamp horizontally so the pill is never off-viewport, and never let it
   overlap the selection rectangle.
 - The pill must not steal the selection: no focus grab, hit-testing only on the pill itself.
-- Desktop: compact pill, `✦ Find meaning`, with a `Ctrl+E` hint. Touch: same action at the
-  selection-toolbar position above the handles, ≥48 dp target.
+- Desktop: compact pill, `Find meaning` with a `Ctrl+E` hint (a **search** icon, not `✦`: a
+  sparkle reads as "AI" in current UI conventions and this product promises no AI answer). Touch:
+  same action at the selection-toolbar position above the handles, ≥48 dp target.
+- Wheel/trackpad signals that land on the pill are forwarded to the viewer, otherwise the document
+  stops scrolling while the cursor rests on the pill (found in M3).
 - Keyboard: `Ctrl/Cmd+E` triggers, `Esc` closes the panel, `Tab` reaches the pill.
 
 #### 5.1.1 pdfrx verification gate — do this in M2/M3 *before* polishing the action UI
@@ -270,13 +305,20 @@ This is the only non-trivial pure logic in the app, so it carries the unit tests
 selections are messy: hard line breaks, hyphenated line-wraps, ligatures, stray whitespace.
 
 ```
-1. Collapse CR/LF/tabs to single spaces.
-2. Repair line-wrap hyphenation: /(\w)-\s+(\w)/ → "$1$2"   (e.g. "idio-\npathic" → "idiopathic")
-3. Collapse runs of whitespace; trim.
-4. Reject empty/whitespace-only → noSelection state, no navigation.
-5. Cap at ~300 characters on a word boundary (a search query, not a document).
-6. Uri.encodeQueryComponent(query) into the single URL template constant.
+1. Drop U+00AD (soft hyphen) and U+0002 (PDFium's marker for a hyphen at a line end — it swallows
+   the line break, so "well\u0002known" joins to "wellknown").
+2. Repair visible wrap hyphens across a *line break* only:  (\p{L})[-\u2010]\s*\n\s*(\p{Ll}) → "$1$2"
+   ("silico\u2010\nvolcano" → "silicovolcano"; "pre- and post-operative" is left alone).
+3. Replace any remaining control character with a space.
+4. Collapse CR/LF/tabs and runs of whitespace to single spaces; trim.
+5. Reject empty/whitespace-only → noSelection state, no navigation.
+6. Cap at ~300 code points on a word boundary (a search query, not a document).
+7. Uri.encodeQueryComponent(query) into the single URL template constant.
 ```
+
+*(Amended after §5.1.1 gate 1: the original rule `(\w)-\s+(\w)` would have turned "pre- and
+post-operative" into "preand post-operative", and the observed PDFium output (U+0002, U+2010) was
+not what the rule assumed. See `docs/progress.md`, M2.)*
 
 Tests: spaces, `&`, `+`, `#`, `?`, quotes, em-dashes, non-Latin/Unicode text, multi-line
 selections, hyphenated wraps, a 5,000-character selection, whitespace-only, and a single word.
@@ -298,6 +340,12 @@ The PDF is the product; search is a quiet utility beside it.
 - **States:** loading (calm placeholder while the page loads, with a 20 s timeout), loaded,
   navigation error / offline (clear message + Retry + Open in browser), no-selection (action simply
   does not appear). No spinner can run forever; no raw error strings.
+- **Security-driven states.** *Search unavailable — sandbox not active:* if the Chromium sandbox
+  cannot start, the embedded panel is **not created**; the user sees a short explanation and
+  **Open in browser** (the app never runs the embedded browser unsandboxed in a release build).
+  *Consent hint:* if the panel lands on a Google consent host, a single quiet line explains that the
+  choice applies until DNDReader quits (search cookies are in memory only). Navigation policy is tied
+  to the security state: sandbox active ⇒ in-panel click-through and Back; unavailable ⇒ browser only.
 - **Accessibility:** semantic labels, ≥48 dp targets, WCAG AA contrast in light and dark, full
   keyboard path, nothing conveyed by colour or hover alone.
 
@@ -305,16 +353,24 @@ The PDF is the product; search is a quiet utility beside it.
 
 ## 7. Milestones
 
-Branch `feat/mvp-reader`; one commit per milestone; update `docs/progress.md` at each.
+**Branching.** `feat/mvp-reader` is the integration branch. Each milestone is developed on its own
+short-lived branch (`feat/m1-shell`, `feat/m2-pdf-reading`, `feat/m3-selection-action`,
+`feat/m0b-hardened-fork`, `feat/m4-search-panel`, `feat/m5-polish`, `feat/m6-tests-packaging`) and
+merged back with `--no-ff` once its checks pass; `feat/mvp-reader` is pushed after each merge.
+**Nothing is committed or merged to `main`, and no PR is opened against it, without the owner's
+explicit approval.** Update `docs/progress.md` at each milestone.
 
-- **P0 — Planning session (this session).** Produce `docs/implementation-plan.md` and `README.md`,
-  and commit them. **No application code, no spike, nothing else.**
-- **M0 — Feasibility spike. The first action of the implementation session, before any
-  application code.** Run §2's usability checks in a throwaway app and write the observations into
-  `docs/progress.md`. If Google proves unusable, stop and raise it as a product decision per §2
-  step 3 rather than proceeding.
-- **M1 — Shell runs on Ubuntu.** `flutter create`, pinned deps, theme, responsive shell, header,
-  empty state. `flutter run -d linux` shows a considered window.
+**Order (amended 2026-10-14): M1 → M2 → M3 → M0b → M4 → M5 → M6.** The hardened fork is not a
+dependency of the shell, the reader or the selection action, while §5.1.1 gate 3 is the last
+existential unknown (a failure would put the contextual-pill interaction in question). So the native
+fork work waits until the gates clear — and then lands before anything that needs a webview.
+
+- **P0 — Planning.** *Done* (`da3813a`).
+- **M0 — Feasibility spike.** *Done* (2026-10-13; `docs/progress.md`). Plus a *security
+  investigation* (2026-10-13/14) that produced the M0b scope below.
+- **M1 — Shell runs on Ubuntu.** `flutter create` (guarded: it can overwrite `README.md`,
+  `.gitignore`, `analysis_options.yaml`), pinned deps, theme, responsive shell, header, empty state.
+  `flutter run -d linux` shows a considered window.
 - **M2 — Real PDF reading.** `file_picker` → `pdfrx`; scroll, zoom, page indicator, open another
   document, argv/`%f` opening. Verify word/phrase/sentence/multi-line selection on all fixtures,
   and complete **§5.1.1 gates 1 and 2** (text retrieval, selection preservation).
@@ -322,12 +378,26 @@ Branch `feat/mvp-reader`; one commit per milestone; update `docs/progress.md` at
   under scroll and zoom) **first**; only then build `PdfTextSelectionParams` wiring, the debounced
   callback, the anchored pill with edge flipping and clamping, `Ctrl+E`, `Esc`, and dismissal.
   Confirm the pill never breaks selection.
-- **M4 — Embedded search panel.** `webview_cef` docked panel, URL building, loading/error/retry,
-  Back, Open-in-browser, Close restoring scroll position.
-- **M5 — Finish the experience.** Persisted zoom/theme/last document/recents/window size,
+- **M0b — Hardened fork (runs after M3's gates clear; lands before M4).** Fork `webview_cef` at
+  upstream `bb2dbcc`; **remove** `disable-web-security`, `allow-running-insecure-content` and the
+  SameSite `disable-features` entry; **enable the sandbox** (drop both the `no-sandbox` switch and
+  `cefs.no_sandbox`), **failing closed** via a native preflight (time-boxed; fall back to reading
+  `/proc/self/attr/current` + `kernel.apparmor_restrict_unprivileged_userns`); **in-memory request
+  context** by default; wire the existing `SetEnableGPU`; debug-only unsandboxed dev override
+  (ignored in release builds). Ship an AppArmor `userns` profile (§8) and a reviewable dev install
+  script (root ⇒ the owner runs it). Evidence: flags absent from the browser `cmdline`, fail-closed
+  behaviour exercised, profile success-path pending the owner's `sudo`. Navigation veto is **not**
+  built (deferred product decision).
+- **M4 — Embedded search panel (on the hardened fork). *Done; see progress.md.*** Docked panel, URL building,
+  loading/error/retry, Back, Open-in-browser, Close restoring scroll position; sandbox-unavailable
+  and consent-hint states (§6). **Then a time-boxed GPU-compositing spike** (frames/s and CPU,
+  GPU off vs on, sandbox on, against a locally authored long page — not Google).
+- **M5 — Finish the experience** (+ a table-of-contents panel, added at the owner's request after the plan was approved: the PDF's own outline as a left-edge overlay, `Ctrl+T`, navigation via `PdfViewerController.goToDest`). Persisted zoom/theme/last document/recents/window size,
   keyboard shortcuts, typography and spacing pass.
-- **M6 — Tests, packaging, docs.** Full test run, `.deb`, README rewritten to match reality, PR →
-  self-review → squash merge to `main`.
+- **M6 — Tests, packaging, docs.** Full test run, `.deb` (with AppArmor profile, `xclip`, CEF
+  attribution files), README rewritten to match reality. The scroll-feel judgement (M0 check 4) is
+  surfaced to the owner with a release build. **Stops at "ready for review" on `feat/mvp-reader`;
+  PR/merge to `main` is the owner's decision.**
 - **M7 — Android** (after Ubuntu is merged). Swap in `search_web_view_mobile.dart`; verify touch
   selection, handles, magnifier, bottom sheet. The Android SDK is already installed at
   `~/Android/Sdk`.
@@ -341,7 +411,7 @@ collaboration, in-panel tabs or bookmarks, a general-purpose browser, AI of any 
 
 ## 8. Build, test, package (Ubuntu)
 
-**Prerequisites** — verified available in Ubuntu 26.04 repos; none currently installed:
+**Prerequisites** — available in the Ubuntu 26.04 repos (installed on the dev machine during M0):
 
 ```bash
 sudo apt update && sudo apt install -y \
@@ -349,8 +419,16 @@ sudo apt update && sudo apt install -y \
 ```
 
 Flutter stable **3.47.7** (Dart 3.13.5) — satisfies `pdfrx`'s ≥3.47.0 floor. `flutter doctor` must
-be clean for `linux`. CEF downloads on first build. **Disk: only ~30 GB free on `/home`** — Flutter
-SDK, CEF and build artifacts need ~6–8 GB; don't install extra Android system images.
+be clean for `linux`. CEF downloads on first build (**658,704,712 bytes**, ~3.1 GB extracted; first
+build 7 min in M0). **Measured disk cost in M0 ≈ 10 GB** (Flutter SDK 2.3 GB + its 1.5 GB tarball,
+CEF tree 3.1 GB, debug build 2 GB, profile) on a machine with ~30 GB free — keep **one** shared CEF
+tree, don't install extra Android system images, and delete the Flutter tarball after extracting.
+
+**Launching during development.** Do not launch GTK apps from the VS Code *snap* terminal: it
+inherits snap GTK/GSettings variables (the app aborts with a `GLib-GIO-ERROR … 'antialiasing'`) and the
+AppArmor label `snap.code.code (complain)`, which makes the sandbox appear to work when a normal launch
+would not. Use `systemd-run --user` (unconfined, the realistic case) or `env -i` with the display
+variables.
 
 **Pre-PR checks:**
 
@@ -365,8 +443,45 @@ bash packaging/linux/build-deb.sh     # → build/dndreader_<ver>_amd64.deb
 **Packaging:** Flutter has no built-in `.deb`, so `build-deb.sh` (~40 lines) assembles
 `usr/lib/dndreader/` (bundle incl. CEF), `usr/bin/dndreader`, the `.desktop` entry with
 `MimeType=application/pdf` and `Exec=dndreader %f` (enables "Open With" from the file manager),
-icons, and `DEBIAN/control`, then `dpkg-deb --build`. `.deb` is the only MVP format; AppImage
-deferred.
+icons, `DEBIAN/control`, `postinst`/`postrm`, `/etc/apparmor.d/dndreader` and the licence/attribution
+files, then `dpkg-deb --build`. `.deb` is the only MVP format; AppImage is **deferred and, on Ubuntu
+≥ 24.04, unsupported** (see "Sandbox" below).
+
+**Sandbox (decision: AppArmor `userns` profile, no SUID helper).** The embedded browser runs with the
+Chromium sandbox enabled and **fails closed** when it cannot start (§6). On Ubuntu ≥ 24.04
+`kernel.apparmor_restrict_unprivileged_userns=1` denies capabilities to unprivileged user namespaces
+for *unconfined* programs, so the namespace sandbox cannot start unless the application has a profile
+that grants `userns` — exactly what Ubuntu ships for Chrome, Chromium, Signal, Slack, VS Code
+(`/etc/apparmor.d/`). The `.deb` therefore installs:
+
+```
+# /etc/apparmor.d/dndreader — profile bound to the installed binary
+abi <abi/5.0>,
+include <tunables/global>
+
+profile dndreader /usr/lib/dndreader/dndreader flags=(unconfined) {
+  userns,
+  @{exec_path} mr,
+  include if exists <local/dndreader>
+}
+```
+
+`postinst` loads it (`apparmor_parser -r`; guarded and non-fatal, because the app fails closed);
+`postrm` unloads and removes it. Chromium re-execs the same binary for its helper processes, so they
+inherit the profile. A SUID `chrome-sandbox` is **not** shipped: Chromium documents the SUID sandbox
+as "almost but not completely removed", and a root-owned setuid helper is the wrong thing to add.
+Consequences: an **AppImage cannot install a system profile** (and its FUSE mount is `nosuid`), so on
+Ubuntu ≥ 24.04 it would always fail closed; distros without the restriction need no profile
+[unverified here]; kernels with user namespaces disabled fail closed.
+
+**As built (M6).** `packaging/linux/build-deb.sh` + `packaging/linux/deb/{dndreader.desktop,dndreader.svg,postinst,prerm}`.
+Deviations from the text above: the profile is unloaded in **`prerm`** (the file still exists then), not
+`postrm`; `chrome-sandbox` is stripped from the package (verified that the sandbox starts without it);
+`Depends` is derived by `ldd` + `dpkg -S` and then **extended by hand** with `libegl1`, `libgles2`
+(runtime `dlopen`s invisible to `ldd`, found by the clean-container start), `xclip` and `apparmor`;
+the fork's licence ships as `webview_cef.LICENSE`; DNDReader's own licence is not shipped because no
+`LICENSE` file exists yet (owner decision). `packaging/linux/verify-sandbox.sh` checks a running
+instance (renderers: seccomp 2, own user/pid/net namespaces).
 
 **CEF runtime dependencies must be derived, not guessed.** `Depends: libgtk-3-0` is a starting
 assumption, not an answer — CEF links a long list of X11, NSS, DBus and font libraries that are
@@ -381,8 +496,10 @@ ldd build/linux/x64/release/bundle/dndreader | awk '{print $3}' | grep '^/' \
   | xargs -r dpkg -S 2>/dev/null | cut -d: -f1 | sort -u
 ```
 
-Put the resulting package names in `DEBIAN/control` `Depends:`, and record the derived list in
-`docs/progress.md`.
+Put the resulting package names in `DEBIAN/control` `Depends:` — **plus `xclip`** (the plugin shells
+out to it for paste; it is not a linked library, so `ldd` will not find it) — and record the derived
+list in `docs/progress.md`. Ship CEF's `LICENSE.txt` and `CREDITS.html` and the fork's `LICENSE`
+under `/usr/share/doc/dndreader/`.
 
 **The `.deb` must then be tested in a clean Ubuntu environment** — not on this machine, where every
 build dependency is already installed and a passing launch proves nothing. Use a fresh Ubuntu 26.04
@@ -394,6 +511,15 @@ apt-get install -y ./dndreader_<ver>_amd64.deb   # must resolve deps with no man
 dndreader test_fixtures/prose.pdf                # must launch, render, select, and open the panel
 ```
 
+**The sandbox must be shown to actually start, and to fail closed.** On a host or VM with the
+package installed: launch, then for each `--type=renderer` process read `/proc/<pid>/status`
+(`Seccomp: 2`, `NoNewPrivs: 1`) and `/proc/<pid>/ns/{user,pid,net}` (different from the browser
+process), and confirm the browser `cmdline` contains none of `--no-sandbox`, `--disable-web-security`,
+`--allow-running-insecure-content`. Then remove the profile (or launch an unconfined copy) and
+confirm the app **fails closed**: no CEF initialisation, no renderer processes, the §6
+*Search unavailable* state, and "Open in browser" works. A container shares the host's LSM, so it can
+validate dependency resolution and the fail-closed path but **not** the profile's success path.
+
 A missing-dependency failure here is a packaging bug to fix, not a note to add to the README.
 If GUI passthrough into a container proves impractical, say so explicitly and test in a VM or a
 fresh user account instead — but do not skip the clean-environment install check, and do not
@@ -401,8 +527,8 @@ report it as done if it was not run.
 
 **Fixtures:** `test_fixtures/make_fixtures.sh` generates three PDFs from local HTML via
 `google-chrome --headless --print-to-pdf` (verified present): book prose, a technical article with
-headings, and a two-column long-paragraph layout. For a real-world 240-page technical document use
-`/usr/share/doc/shared-mime-info/shared-mime-info-spec.pdf` (verified present). **Do not use the
+headings, and a two-column long-paragraph layout. For a real-world technical document use
+`/usr/share/doc/shared-mime-info/shared-mime-info-spec.pdf` (verified present; **19 pages**, pdfTeX — it has no hyphen wraps). **Do not use the
 PDFs in `~/Downloads` — those are the user's personal documents.**
 
 **Automated tests** are deliberately modest, because with no AI provider there is little
@@ -431,8 +557,14 @@ hardware), Android (until M7), and `integration_test` (best-effort on Linux desk
 3. **Consent screens and, rarely, a CAPTCHA may appear** in the panel, especially on shared or VPN
    IPs. They are solvable in place, like in any browser.
 4. **Network required** for the panel. The reader itself works offline.
-5. **Large desktop bundle** (~150–250 MB) because CEF ships Chromium; Linux uses CEF's software
-   rendering path, so panel scrolling may be less smooth than a real browser.
+5. **Large desktop bundle** (a release bundle with CEF is **~1.5 GB uncompressed**; a `.deb` has not been
+   built yet, so its size is unknown — the earlier ~150–250 MB estimate was not measured) because CEF ships
+   Chromium. **Linux uses CEF's software rendering path by default — verified in M0/M4**
+   (`--disable-gpu --disable-gpu-compositing` observed in the child processes; frames reach Flutter as CPU
+   pixel buffers). In a scripted-scroll benchmark the software path delivered ≈ 40 frames/s versus ≈ 60 with
+   GPU compositing enabled, so scrolling may feel less smooth than a real browser. GPU compositing is
+   available as an **explicit opt-in** (`DNDREADER_GPU=1`) and is **off by default** because with it the GPU
+   process runs without its seccomp filter. Whether scrolling *feels* acceptable is the owner's judgement.
 6. **Text-based PDFs only.** Scanned pages have no text layer — show "This page has no selectable
    text" rather than failing silently. No OCR.
 7. **Ubuntu is the only verified platform in the MVP.** The other four are architecturally
@@ -447,6 +579,22 @@ hardware), Android (until M7), and `integration_test` (best-effort on Linux desk
    resolve — with legal advice if distribution matters to them — rather than one the
    implementation has answered. Google may also change embedded-webview behaviour at any time
    without notice.
+9. **Chromium security-update cadence is this project's responsibility** (desktop only). Pinning
+   CEF in a fork means DNDReader must ship Chromium security fixes itself, indefinitely; a bare
+   `.deb` has **no automatic update channel**, so fixes reach users only when they install a new
+   package. See the bump policy in §10.
+10. **The sandbox needs an AppArmor profile on Ubuntu ≥ 24.04** (installed by the `.deb`). If the
+    sandbox cannot start, the embedded panel is disabled and results open in the system browser
+    (fail closed) — the app never runs the embedded browser unsandboxed in a release build. An
+    **AppImage is unsupported** on those systems. On kernels with user namespaces disabled it also
+    fails closed.
+11. **Search cookies and storage are in memory only** and are discarded on quit — nothing about
+    searches persists on disk (a consent choice may reappear **once per launch**, where Google shows
+    one). Behaviour behind an EEA/UK consent wall is **unverified**: none appeared in testing.
+12. **The embedded panel is not a jail.** With the sandbox and web security on, result pages from
+    third-party sites render at roughly a normal browser's posture; DNDReader does not restrict
+    where in-panel navigation can go (a navigation delegate is a deferred product decision).
+13. **`xclip` is needed to paste** into the webview (the plugin shells out to it).
 
 ---
 
@@ -454,9 +602,13 @@ hardware), Android (until M7), and `integration_test` (best-effort on Linux desk
 
 | Risk | Mitigation |
 |---|---|
-| **Google unusable in `webview_cef` on Ubuntu** — the single biggest risk | M0 usability spike before any application code; §2's ladder to make Google work; if it cannot be made to work, the failure is documented and escalated as an explicit product decision (Google stays the intended engine — the URL is isolated in one constant so the switch is cheap *once decided*, not automatic) |
-| `webview_cef` is a community plugin carrying a central feature | Active (243 stars, Sept 2026 commits, CEF 149); features we need are documented; `desktop_webview_window` is the degraded fallback (separate window) |
-| CEF build friction (C++20, first-build download) | Prerequisites installed up front; verified in M0, not discovered in M4 |
+| **Google unusable in `webview_cef` on Ubuntu** — the single biggest risk | **M0 found it usable (one machine/network).** The M0 usability spike ran before any application code; §2's ladder to make Google work; if it cannot be made to work, the failure is documented and escalated as an explicit product decision (Google stays the intended engine — the URL is isolated in one constant so the switch is cheap *once decided*, not automatic) |
+| `webview_cef` is a community plugin carrying a central feature | Active (243 stars, Sept 2026 commits, CEF 149); M0 exercised it. We now depend on a **pinned fork**, so we also own its rebase cost: keep the diff small and deletion-heavy (`HARDENING.md`), rebase on upstream at least quarterly, and offer the opt-out/`rootCachePath`-style changes upstream. `desktop_webview_window` remains the degraded fallback (separate window) |
+| **Chromium security patch cadence** — standing risk | Pinning CEF 149 in a fork makes this project responsible for shipping Chromium security updates to its own users indefinitely, **on desktop only** (Android/iOS get a vendor-patched system WebView). **Bump policy:** the CEF version has one source of truth (`third/download.cmake` in the fork). Check CEF *stable-branch* builds at least monthly and on every Chrome stable security release. Target a rebuilt, released package within **14 days** of a Critical or exploited-in-the-wild fix and **30 days** otherwise; never release with a pin more than **60 days** behind the newest stable of its major. Every bump re-runs the sandbox-active and fail-closed checks (§8). With no apt repository there is no automatic delivery to users — a stated limitation, not a solved problem. The app shows its Chromium version in an About/diagnostics line. *(These intervals are proposed defaults, not measurements.)* |
+| Sandbox cannot start on the user's system | Fail closed (§6): panel disabled, Open in browser. AppArmor profile installed by the `.deb`; fail-closed path tested, profile success path verified on a host/VM (§8) |
+| Google consent wall behind an in-memory profile (EEA/UK) | One long-lived webview ⇒ at most once per launch; URL-only detection + hint (§6); persistence opt-in deferred but the fork keeps an optional cache path. **Unverified** — not observable on the dev network |
+| CEF build friction (C++20, first-build download) | Prerequisites installed up front; **verified in M0** (7 min first build, no toolchain errors with clang 21 / cmake 4.2) |
+| Disk headroom (~20 GB free at 90 %) | One shared CEF tree; delete the Flutter tarball; watch free space before release builds |
 | `textSelectionPointRange` shape under-documented | Verify in M3; fall back to `charRects` + `PdfViewerController` transform |
 | Panel feels cramped / results unusable at 420 px | Test in M0 with real queries; widen the panel or accept Google's responsive layout |
 | Flutter/Dart unfamiliarity | Few files, flat structure, `flutter analyze` + tests as guardrails |
@@ -471,14 +623,19 @@ hardware), Android (until M7), and `integration_test` (best-effort on Linux desk
 - `flutter build linux --release` succeeds.
 - **M0's observations** (§2, all seven checks) and the **§5.1.1 pdfrx gate results** are written in
   `docs/progress.md` as what was observed, not as pass/fail.
-- The **derived CEF dependency list** is in `DEBIAN/control` and recorded in `docs/progress.md`,
-  with no unresolved `ldd` entries.
+- **Security posture, observed not assumed:** the browser process command line contains none of
+  `--no-sandbox`, `--disable-web-security`, `--allow-running-insecure-content` or the SameSite
+  `disable-features` entry; renderers are sandboxed (`Seccomp: 2`, own user/pid/net namespaces); the
+  **fail-closed** path is exercised; the release build ignores the dev override; no search data is
+  written to disk; and the **CEF bump policy** (§10) and the pinned fork SHA are recorded.
+- The **derived CEF dependency list** (plus `xclip`) is in `DEBIAN/control` and recorded in
+  `docs/progress.md`, with no unresolved `ldd` entries.
 - The `.deb` **installs and runs in a clean Ubuntu 26.04 environment** with no manual dependency
   installation, launches from the app menu, and opens a PDF via "Open With".
 - The §8 manual checklist passes, with results recorded in `docs/progress.md`.
 - README reproduces a working app from a clean clone and states every limitation in §9.
-- PR created, self-reviewed, squash-merged to `main`; `docs/progress.md` current so a fresh session
-  can resume from it.
+- The MVP is complete on `feat/mvp-reader`, self-reviewed, with `docs/progress.md` current so a
+  fresh session can resume from it. **Merging to `main` (or opening a PR) is the owner's decision.**
 - **Nothing is reported as verified that was not actually executed** — unexercised APIs, untested
   packages and unbuilt platforms are described as such, in both the PR and the README.
 
@@ -486,8 +643,6 @@ hardware), Android (until M7), and `integration_test` (best-effort on Linux desk
 
 ## Immediate next step
 
-**This session:** write `docs/implementation-plan.md` (this document) and `README.md`, and commit
-them. That is its entire output — no application code, no spike.
-
-**Next (implementation) session:** start with the **M0 feasibility spike** (§2) before writing any
-application code, record the observations in `docs/progress.md`, and only then proceed to M1.
+Work proceeds on `feat/mvp-reader` in the amended order **M1 → M2 → M3 → M0b → M4 → M5 → M6**
+(§7). `docs/progress.md` is the running record; each milestone ends with a short report of what was
+built, how it was verified, what failed and what remains unverified.
