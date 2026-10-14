@@ -37,10 +37,16 @@ same Windows 10 / 150 % machine. **CI on the final head is still to be confirmed
   finishes exiting. So: bounded and recovered by D2, **not eliminated**, and not root-caused beyond that.
 - Google rate limiting may contribute to those outliers (many queries were issued in one session) — the owner's
   suggestion; **not shown**. Re-measure with fewer queries if it matters.
-- **SmartScreen: still not verified.** The owner ran a copy fetched by a command (no Mark-of-the-Web) and it
-  opened straight away — which is expected for such a file and says nothing about a browser-downloaded one.
-  The check that counts is: download the CI artifact **in a browser**, double-click, note whether "Windows
-  protected your PC" appears and its Publisher text. The installer is unsigned (`NotSigned`).
+- **First-run warning: observed (owner's screenshot), Windows 10.** The installer carries a
+  Mark-of-the-Web (added to the downloaded file to stand in for a browser download) and was launched by
+  double-click. Windows showed the classic **"Open File - Security Warning"** dialog, *not* the blue
+  "Windows protected your PC" screen: **"The publisher could not be verified. Are you sure you want to run this
+  software?"**, Publisher **"Unknown Publisher"**, Type Application, with **Run** / **Cancel** and an
+  "Always ask before opening this file" box, and the line "This file does not have a valid digital signature
+  that verifies its publisher." That is what a first-time user sees; **Run** continues to the installer.
+  Not observed: a warning from the browser itself at download time (Edge may add its own "not commonly
+  downloaded" prompt); the real browser download was not performed. SmartScreen's cloud reputation check
+  was not seen to fire. Signing the installer would turn "Unknown Publisher" into the publisher's name.
 - **Windows 11 capture border, the Runtime-missing bootstrapper path and 100/125/200 % scaling on real
   displays remain not verified.**
 - This session also found and fixed a Windows-only **test** bug (a `/` literal in an expected path; 154/155 on
