@@ -69,6 +69,26 @@ Each: what, how to reproduce, evidence, **leads** (read from source — hypothes
   first search (twice: after a crash, and after a kill).
 - **Fix direction.** Sweep once at startup (cheap, guarded by the existing lock/age/pid rules), or correct the
   wording. With D1 fixed this is low urgency, but crashes/kills still depend on it.
+- **Status — fixed on Linux-testable code, 2026-10-14 (`fix/d2-sweep-at-launch`, merged as `979aa60`).** Chose
+  *behaviour* over wording: the wording ("the next launch sweeps it") was the right promise, the call site was
+  wrong. `sweepStaleProfilesAtLaunch()` (`search_profile.dart`) is now called from `main()` after `runApp`
+  (`lib/main.dart`), **Windows only**, in a **background isolate** (`Isolate.run`) so a leftover of hundreds of
+  files cannot hold up the first frame; it never throws. The sweep in `Webview2SearchWebView.start()` was
+  **removed**. Guards untouched: `decideSweep`, `SearchProfileStore.sweepStale`, the lock probe, the 60 s age
+  rule, own-pid exclusion.
+  - One honest caveat the wording needed: a crashed run that died *before* creating its lock file is only swept
+    once 60 s old, so that (rare) leftover goes at "a later launch", not necessarily the next. Comment added in
+    `search_profile.dart`; user-facing text ("until the next launch removes it") left as is.
+  - **Verified (Linux, how):** 4 new unit tests run `sweepStaleProfilesAtLaunch` end-to-end through the real
+    isolate against a temporary directory — disabled → untouched; a stale lock-bearing folder removed; and the
+    guards still refuse a lookalike name, a non-owned name, a file, a symlink to an outside directory (its
+    contents survive), a folder with a fresh lock-less state, and the own pid. 155 tests pass; release build
+    runs; no `dndreader-search-*` created on Linux.
+  - **Not verified (needs Windows):** that the isolate really sweeps a real WebView2 leftover at launch (the
+    68 MB / ~600-file case), that it runs without noticeable startup cost, that a second live instance's folder is
+    skipped via the Windows lock (`lockSync` is non-blocking/exclusive there — **read**), and path-casing/junction
+    handling. **Re-verify:** run Find meaning, `Stop-Process -Force`, relaunch and *do not search* — the
+    `dndreader-search-<oldpid>` folder should be gone within a few seconds of launch.
 
 ### D3 — Medium — spurious "Couldn't load results" and desynced Back after a Cloudflare-gated result
 
@@ -98,6 +118,37 @@ Each: what, how to reproduce, evidence, **leads** (read from source — hypothes
   platform-independent — **Linux parity unknown**; check there before assuming a Windows-only cause.
 - **Done when.** After Enter (and after Esc in the field), `Ctrl+R/E/T` and arrow keys act on the document
   without an extra click. Add a widget test.
+- **Status — fixed; Linux parity settled: this is a shared bug, not a Windows one (`fix/d4-page-field-focus`,
+  merged as `d47c9d1`).**
+  - **Reproduced on Linux first.** The real app was run on the Linux device with `flutter test
+    integration_test -d linux` (new `integration_test/page_field_focus_test.dart`, `outline.pdf`): after Enter —
+    and after Esc — in the page field, `Ctrl+T` did nothing and `primaryFocus` was the route's
+    `_ModalScopeState` focus scope. A control (Ctrl+T with no field interaction) passed. **Caveat:** keys are
+    injected *inside Flutter* (`sendKeyEvent`), not through GTK; OS-level input cannot be driven on this machine
+    (no xdotool/Xvfb; XTest under XWayland does not reach the app, as recorded in M0). The GTK→engine hop is
+    therefore untested, but this bug is entirely above it.
+  - **Cause (from the focus tree, confirmed by the reproduction).** The page field sits *under* the reader's
+    `Focus(_readerFocus)`. `_finish()` runs `_focus.unfocus()` (default `UnfocusDisposition.scope`, applied on a
+    microtask) and then `onDone` → `_focusReader()`, whose guard `!_readerFocus.hasFocus` is **still true** —
+    `hasFocus` includes descendants and the unfocus has not applied — so it does nothing. Primary focus then
+    settles on the enclosing focus scope, which is *above* `CallbackShortcuts`. Shortcuts and the viewer's own
+    arrow-key handling both miss it until a click gives the viewer focus. (The still-visible focus outline on
+    Windows after Enter is not explained by this and was not reproduced on Linux — see below.)
+  - **Fix.** `ReaderScreen._onPageEditDone()` (`reader_screen.dart`, new method next to `_focusReader`; the
+    header is now wired to it): when a document is ready it calls `PdfViewerController.requestFocus()` — the
+    same node a click on the document focuses — else falls back to `_readerFocus.requestFocus()`. `_focusReader`
+    (used when the search panel closes) is **unchanged**.
+  - **Verified (Linux, how):** the integration run above — **fails 3/4 before the fix** (Enter, Esc, and "focus
+    lands on the same node as a click on the document"), **passes 4/4 after**; `Ctrl+T` toggles the contents
+    panel after both exits. Plus two widget tests (`test/widget/page_field_focus_test.dart`) covering both exits
+    on the same tree shape. **Honest limit of the widget tests:** pdfrx cannot start inside `flutter test`, so
+    they exercise `PageField` and the focus contract, and would pass without the `reader_screen.dart` change;
+    the regression guard for the wiring is the integration test, which CI does not run (no display).
+  - **Not verified (needs Windows):** that this fixes the Windows symptom. Same code path, so it is expected
+    to, but Windows showed an extra symptom (the field kept its focus outline after Enter) that I could not
+    reproduce on Linux. If `Ctrl+R` is still dead after Enter on a build of this branch, treat it as a *new*,
+    Windows-specific focus problem (candidates: the field's own `unfocus()` on Windows, or the embedder's text
+    input), not as D4 again.
 
 ### D5 — Medium — default first-run window is taller than the work area at 150 % scale
 
@@ -176,7 +227,7 @@ level; whether `onExitRequested` actually runs (D1 root cause).
    three quit paths + Application-log check.
 2. **D3**, **D4**, **D5** — each its own branch with a test where one is possible
    (D4 widget test; D5 a pure clamp function with unit tests like `window_settings`).
-3. **D2** — sweep at startup or fix wording; fold into D1's branch only if trivial.
+3. ~~**D2**~~ — done on Linux-testable code (see D2); re-verify on Windows. ~~**D4**~~ — shared bug, fixed; re-verify on Windows.
 4. **D6/D7** — installer/icon polish in `packaging/windows/`.
 5. Re-run the whole §7 checklist on a build from CI, and get the owner's SmartScreen observation and a
    Windows 11 pass for the capture border.
