@@ -37,8 +37,12 @@ same Windows 10 / 150 % machine. **CI on the final head is still to be confirmed
   finishes exiting. So: bounded and recovered by D2, **not eliminated**, and not root-caused beyond that.
 - Google rate limiting may contribute to those outliers (many queries were issued in one session) — the owner's
   suggestion; **not shown**. Re-measure with fewer queries if it matters.
-- **Windows 11 capture border, SmartScreen as the owner saw it, the Runtime-missing bootstrapper path and
-  100/125/200 % scaling on real displays remain not verified.**
+- **SmartScreen: still not verified.** The owner ran a copy fetched by a command (no Mark-of-the-Web) and it
+  opened straight away — which is expected for such a file and says nothing about a browser-downloaded one.
+  The check that counts is: download the CI artifact **in a browser**, double-click, note whether "Windows
+  protected your PC" appears and its Publisher text. The installer is unsigned (`NotSigned`).
+- **Windows 11 capture border, the Runtime-missing bootstrapper path and 100/125/200 % scaling on real
+  displays remain not verified.**
 - This session also found and fixed a Windows-only **test** bug (a `/` literal in an expected path; 154/155 on
   Windows before, 155/155 after) — the suite had never been run on Windows.
 
