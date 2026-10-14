@@ -162,8 +162,12 @@ Take the installer from the latest green run of `windows.yml` (artifact `dndread
     speed is wrong, tell me the direction — the constant is `PdfView.wheelScrollFactorFor`.
 12. **Persistence**: change the window size, set a zoom, move to a page; quit; relaunch. Page, zoom and window
     size should return. (Size is in `%APPDATA%\dndreader\window-size`.)
-13. **Privacy**: with the panel used, look in `%TEMP%` — a `dndreader-search-<pid>` folder should exist;
-    **quit DNDReader; it should be gone.** If it remains, relaunch and confirm the next launch removes it.
+13. **Privacy** — a hard pass/fail, in **all three** quit paths: (a) click the title-bar X, (b) `Esc` to close
+    the panel then X, (c) `CloseMainWindow`. With the panel used, a `dndreader-search-<pid>` folder should exist
+    in `%TEMP%`; **after quitting it must be gone, the process must exit in about a second, and Windows'
+    Application log must have no `dndreader.exe` Application Error event.** (Before the D1 fix every quit after a
+    search hung ~5 s, crashed in `flutter_windows.dll`, and left the folder.) Then kill the app abruptly during a
+    search, relaunch **without searching**: the old folder is removed within seconds.
 14. **About** (Menu → About): shows `Microsoft Edge WebView2 Runtime <version>` and the temporary-folder line,
     and does **not** mention CEF.
 15. **Windows 11 only**: is there a **yellow border** around the search panel?

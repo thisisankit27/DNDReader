@@ -12,7 +12,37 @@ the Windows port, or to review how the claims were evidenced. It assumes no memo
 - Detail log with every step: [RESULTS.md](RESULTS.md). Screenshots: [screenshots/](screenshots/) (curated, cropped).
   Input/screenshot helper used: [tools/input-helpers.ps1](tools/input-helpers.ps1).
 
-## 1. Bottom line
+## 0. Status after the Windows fix session (read this first)
+
+All seven defects were addressed on `feat/windows-port` (one branch per fix, `--no-ff` merges; **170 tests**,
+`dart format`/`flutter analyze` clean). Evidence below is from a **local** debug *and* release build on the
+same Windows 10 / 150 % machine. **CI on the final head is still to be confirmed** (see the owner's checklist).
+
+| # | Defect | Status | How it was verified |
+|---|---|---|---|
+| D1 | Crash on quit after a search; profile left behind | **Fixed** | The runner now defers `WM_CLOSE`, asks Dart to run shutdown hooks over `dndreader/lifecycle`, then closes. Real X-click, `Esc`→X and `CloseMainWindow`: **0 Application Error events, nothing left in `%TEMP%`**, ~0.5–0.8 s (debug and release). |
+| D2 | Sweep at first search, not launch | **Fixed** (Ubuntu session), **re-verified on Windows** | `REVERIFY-574c0e9.md`. |
+| D3 | Spurious "Couldn't load results"; Back desync | **Fixed** | Gated click (dictionary.cambridge.org, thesaurus.com) shows the interstitial then the page, no failure overlay; Back returns to the results. Real `WebErrorStatus` logged: `unknown` (0) for the aborted challenge navigation. |
+| D4 | Shortcuts dead after page-field Enter | **Fixed** (Ubuntu session), **re-verified on Windows** | `REVERIFY-574c0e9.md`; the "focus outline persists" note was a mouse-hover misread (corrected there). |
+| D5 | First-run window taller than work area at 150 % | **Fixed** | Real first run: `15,15 1650×1004`, bottom at 1019 inside a 1034 px work area (was 1650×1106). `FitToWorkArea` has a 184-check MSVC test, also run in CI. 100/125/200 % are verified by that test only. |
+| D6 | Default icon, "dndreader", no publisher | **Fixed** | Brand icon in title bar, taskbar and Open With; `FileDescription`/`ProductName` = DNDReader; Publisher `thisisankit27` in the uninstall entry. |
+| D7 | Uninstall leftovers | **Fixed** | Uninstall removed the `Applications\dndreader.exe` key, `%APPDATA%\dndreader`, `%APPDATA%\com.dndreader` and a seeded stale `%TEMP%\dndreader-search-*`; default `.pdf` handler untouched. **Decision:** settings are removed on uninstall (they hold recent-file paths); an upgrade keeps them. |
+
+**Residual / not done**
+
+- **Quit with a live Google page is not always sub-second.** Of 11 live release quits, 8 took 0.55–0.75 s and
+  3 took 2.5 s, 3.4 s and 8.0 s; a leftover folder was seen after the slow ones and was removed by the next
+  launch's sweep. With no network (dead proxy) 6/6 took 0.65–0.69 s. In the one timed live debug run the only
+  slow step was the profile delete (~400 ms), which retries up to 10 × 300 ms while WebView2's browser process
+  finishes exiting. So: bounded and recovered by D2, **not eliminated**, and not root-caused beyond that.
+- Google rate limiting may contribute to those outliers (many queries were issued in one session) — the owner's
+  suggestion; **not shown**. Re-measure with fewer queries if it matters.
+- **Windows 11 capture border, SmartScreen as the owner saw it, the Runtime-missing bootstrapper path and
+  100/125/200 % scaling on real displays remain not verified.**
+- This session also found and fixed a Windows-only **test** bug (a `/` literal in an expected path; 154/155 on
+  Windows before, 155/155 after) — the suite had never been run on Windows.
+
+## 1. Bottom line (as found, before the fixes)
 
 > **Not ready to merge to `main`.** The app installs, renders PDFs, selects text, and the embedded Google search
 > panel works (results load, no CAPTCHA/consent wall). But **it crashes on every quit after a search was used**,

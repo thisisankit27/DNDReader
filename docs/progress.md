@@ -1392,3 +1392,28 @@ Source: `docs/windows-verification/REPORT.md`. Branches `fix/d4-page-field-focus
   `dart format`, `flutter analyze` clean; `flutter build linux --release` succeeds and the built app opens
   `outline.pdf` and runs.
 - **Not verified:** everything on Windows. The Linux app was driven with in-Flutter key events only.
+
+## Follow-up: D1, D3, D5, D6, D7 (2026-10-14, Windows session)
+
+Branches off `feat/windows-port`, each merged `--no-ff`: `fix/test-profile-path-separator`, `fix/d1-quit-crash`,
+`fix/d3-load-error-and-back`, `fix/d5-window-fit-work-area`, `fix/d6-d7-branding-and-uninstall`,
+`fix/d1b-shutdown-timing`. First time the toolchain (Flutter 3.47.7, VS Build Tools 17.14, Inno Setup 6.7.3) and
+the test suite ran on Windows.
+
+- **Test suite on Windows:** 154/155 before (a `/` literal in an expected profile path), 155/155 after; now 170.
+- **D1** — root cause found with a debug build and a native trace: the runner sends `WM_CLOSE` to `DestroyWindow`
+  (47 ms to `WM_DESTROY`) and the engine never sends an exit request, so `onExitRequested` never ran and the
+  WebView2 environment was destroyed inside `FlutterWindow::OnDestroy()`, which faulted. Fix: the runner defers
+  `WM_CLOSE`, calls `prepareToClose` on `dndreader/lifecycle`, and closes on Dart's reply or a 6 s backstop;
+  `lib/services/app_shutdown.dart` runs registered hooks (4 s cap). **Verified** on debug and release: three quit
+  paths, no Application Error event, nothing left. **Not eliminated:** a quit with a heavy live page was 2.5–8 s
+  in 3 of 11 release runs (profile delete retrying while WebView2 exits); the launch sweep recovers it.
+- **D3** — real status `WebErrorStatus.unknown` for a superseded challenge navigation. View pairs an error with its
+  own `NavigationCompleted`; session holds ambiguous errors 5 s, recovers from `failed`, ignores `__cf_chl_*`
+  hops, and Back reloads our previous page when the browser says it cannot go back.
+- **D5** — `FitToWorkArea` (header-only, 184 checks in `windows/runner/test/`, run by `windows.yml`).
+- **D6/D7** — brand icon from `packaging/linux/deb/dndreader.svg`, names, publisher; whole
+  `Applications\dndreader.exe` key and user data removed on uninstall (decision recorded in the commit).
+- **Method notes:** `flutter run -d windows --debug` with its log captured; synthetic input via
+  `docs/windows-verification/tools/input-helpers.ps1`; dead-proxy runs use `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`
+  so no query reaches Google.
