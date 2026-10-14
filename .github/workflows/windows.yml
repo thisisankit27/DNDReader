@@ -1,0 +1,106 @@
+# Windows port CI (docs/windows-implementation-plan.md §7 W1, §8.2).
+#
+# What a green run proves: the Dart code is formatted, analyses clean and its unit tests pass; the
+# Windows app COMPILES and its bundle contains the expected files. It does NOT prove the app runs,
+# renders, or looks right — that is the owner's interactive pass (§8.3).
+name: windows
+
+on:
+  push:
+    branches: ['feat/windows-port', 'feat/w*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.47.7
+
+jobs:
+  analyze_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # pubspec_overrides.yaml is gitignored and points at a developer's local checkout. It must
+      # never be what CI resolves against; CI resolves the SHA pinned in pubspec.yaml.
+      - name: No local dependency overrides
+        run: test ! -e pubspec_overrides.yaml
+
+      - run: flutter pub get
+
+      - name: Fork resolves from the pinned git ref
+        run: |
+          grep -A6 '^  webview_cef:' pubspec.lock
+          grep -q 'source: git' <(grep -A6 '^  webview_cef:' pubspec.lock)
+
+      - run: dart format --set-exit-if-changed .
+      - run: flutter analyze
+      - run: flutter test
+
+  build_windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: No local dependency overrides
+        shell: bash
+        run: test ! -e pubspec_overrides.yaml
+
+      # Optimisation, not a precondition: with CEF excluded there is no engine download or compile.
+      - name: Cache pub cache
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\Pub\Cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
+
+      - name: Cache build/windows
+        uses: actions/cache@v4
+        with:
+          path: build/windows
+          key: build-windows-${{ hashFiles('pubspec.lock', 'windows/**') }}
+          restore-keys: build-windows-
+
+      - run: flutter pub get
+
+      - name: Build
+        run: flutter build windows --release
+
+      - name: Assert bundle contents
+        shell: bash
+        run: |
+          bundle=build/windows/x64/runner/Release
+          ls -la "$bundle"
+          missing=0
+          for f in dndreader.exe WebView2Loader.dll flutter_windows.dll data/app.so; do
+            if [ -e "$bundle/$f" ]; then echo "ok       $f"; else echo "MISSING  $f"; missing=1; fi
+          done
+          # CEF is excluded on Windows (fork branch dndreader/windows): none of it may ship.
+          if ls "$bundle" | grep -qi '^libcef'; then echo "UNEXPECTED libcef in bundle"; missing=1; fi
+          du -sh "$bundle"
+          exit $missing
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: dndreader-windows-bundle
+          path: build/windows/x64/runner/Release
+          if-no-files-found: error

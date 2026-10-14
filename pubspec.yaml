@@ -35,10 +35,15 @@ dependencies:
   shared_preferences: ^2.5.6
   url_launcher: ^6.3.3
   # Pinned, security-hardened fork (see docs/implementation-plan.md §1, HARDENING.md in the fork).
+  # The ref is branch dndreader/windows: 0970b44 plus one commit that removes the fork's
+  # `windows:` plugin platform, so a Windows build does not download and bundle unused CEF.
   webview_cef:
     git:
       url: https://github.com/thisisankit27/webview_cef
-      ref: 0970b4447cb667dc4a512ba5350a39a253d6d273
+      ref: 0e8256685e0b8caedfedaf81e054b7782e8e664e
+  # Windows search panel (WebView2). Exact pin, no caret: a third-party package, see
+  # docs/windows-implementation-plan.md §3.4 and the supply-chain finding in docs/progress.md.
+  webview_flutter_windows: 1.3.0
 
 
 dev_dependencies:
