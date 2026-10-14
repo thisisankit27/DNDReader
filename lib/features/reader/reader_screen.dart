@@ -261,6 +261,15 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _search.search(uri, query);
   }
 
+  /// "Find meaning" from the right-click menu: reads the selection as it is
+  /// now, so it works even before the pill's debounce has settled.
+  Future<void> _findMeaningNow() async {
+    final query = await _action.resolveQueryNow();
+    if (query == null || !mounted) return;
+    final uri = searchUriFor(query);
+    if (uri != null) unawaited(_search.search(uri, query));
+  }
+
   void _zoomIn() {
     if (_controller.isReady) _controller.zoomUp();
   }
@@ -357,8 +366,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
           key: ValueKey('$_path#$_openSerial'),
           contentInsets: insets,
           contextMenuOpen: _contextMenuOpen,
-          canFindMeaning: () => _action.available,
-          onFindMeaning: _findMeaning,
+          onFindMeaning: () => unawaited(_findMeaningNow()),
           documentRef: _documentRef!,
           controller: _controller,
           onPageChanged: (page) => setState(() => _pageNumber = page),
