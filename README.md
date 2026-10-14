@@ -31,6 +31,7 @@ README should be read as a claim that a platform other than Ubuntu works.
 ## What it does
 
 - Opens a PDF (file picker, `Ctrl+O`, command-line argument, or "Open With"), scrolls (wheel, keys, draggable vertical and horizontal scrollbars), zooms, shows `page / total`.
+- Type a page number in the header and press Enter to jump there; rotate the document (`Ctrl+R`, `Ctrl+Shift+R`); full screen (`F11`, `Esc` leaves it).
 - **Contents** (`Ctrl+T`): the document's own outline in a left-edge panel; topics expand and collapse, click a title to jump.
 - Select text → **Find meaning** (or `Ctrl+E`) → Google Search results in a side panel on the right;
   `Esc` closes it and you are exactly where you were.
@@ -77,7 +78,7 @@ flutter test
 flutter build linux --release
 
 packaging/linux/build-deb.sh          # → dist/dndreader_<ver>-1_amd64.deb
-sudo apt install ./dist/dndreader_0.1.1-1_amd64.deb
+sudo apt install ./dist/dndreader_0.1.2-1_amd64.deb
 ```
 
 The `.deb` is built for the Ubuntu release it is built on (its `Depends` are derived from the

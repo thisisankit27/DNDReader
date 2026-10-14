@@ -85,7 +85,12 @@ Future<void> showShortcutsDialog(BuildContext context) {
     ('Ctrl+O', 'Open a PDF'),
     ('Ctrl+E', 'Find meaning of the selected text'),
     ('Ctrl+T', 'Show or hide the table of contents'),
-    ('Esc', 'Close the search panel or contents, then clear the selection'),
+    ('F11', 'Full screen on or off'),
+    ('Ctrl+R', 'Rotate clockwise (Ctrl+Shift+R: counter-clockwise)'),
+    (
+      'Esc',
+      'Leave full screen, or close the search panel / contents, then clear the selection',
+    ),
     ('Ctrl + / Ctrl −', 'Zoom in / out'),
     ('Ctrl+0', 'Fit the page'),
     ('PgUp / PgDn, arrows', 'Move through the document'),

@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include <flutter_linux/flutter_linux.h>
+#include <gdk/gdkkeysyms.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
@@ -44,10 +45,19 @@ static void load_window_size(int* width, int* height) {
   }
 }
 
+static gboolean window_is_fullscreen(GtkWindow* window) {
+  GdkWindow* gdk = gtk_widget_get_window(GTK_WIDGET(window));
+  return gdk != nullptr &&
+         (gdk_window_get_state(gdk) & GDK_WINDOW_STATE_FULLSCREEN) != 0;
+}
+
 static gboolean save_window_size_cb(gpointer data) {
   GtkWindow* window = GTK_WINDOW(data);
   window_size_save_timer = 0;
-  if (gtk_window_is_maximized(window)) return G_SOURCE_REMOVE;
+  // A maximized or full-screen window is not the size to restore to.
+  if (gtk_window_is_maximized(window) || window_is_fullscreen(window)) {
+    return G_SOURCE_REMOVE;
+  }
   int w = 0, h = 0;
   gtk_window_get_size(window, &w, &h);
   if (w < 480 || h < 360) return G_SOURCE_REMOVE;
@@ -65,6 +75,76 @@ static gboolean window_configure_cb(GtkWidget* widget, GdkEventConfigure*,
   if (window_size_save_timer != 0) g_source_remove(window_size_save_timer);
   window_size_save_timer = g_timeout_add(500, save_window_size_cb, widget);
   return FALSE;
+}
+
+// ---- Full screen -------------------------------------------------------------
+// Flutter has no window API, so the Dart side asks over a tiny channel
+// ("dndreader/window": setFullscreen(bool) -> bool) and is told of changes
+// ("fullscreenChanged"), including ones the window manager makes itself.
+static FlMethodChannel* window_channel = nullptr;
+
+static void window_channel_cb(FlMethodChannel* channel, FlMethodCall* call,
+                              gpointer user_data) {
+  GtkWindow* window = GTK_WINDOW(user_data);
+  const gchar* name = fl_method_call_get_name(call);
+  g_autoptr(FlMethodResponse) response = nullptr;
+  if (g_strcmp0(name, "setFullscreen") == 0) {
+    FlValue* args = fl_method_call_get_args(call);
+    if (args != nullptr && fl_value_get_type(args) == FL_VALUE_TYPE_BOOL) {
+      if (fl_value_get_bool(args)) {
+        gtk_window_fullscreen(window);
+      } else {
+        gtk_window_unfullscreen(window);
+      }
+      response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+    } else {
+      response = FL_METHOD_RESPONSE(fl_method_error_response_new(
+          "bad-args", "setFullscreen expects a bool", nullptr));
+    }
+  } else if (g_strcmp0(name, "isFullscreen") == 0) {
+    g_autoptr(FlValue) value = fl_value_new_bool(window_is_fullscreen(window));
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(value));
+  } else {
+    response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+  }
+  fl_method_call_respond(call, response, nullptr);
+}
+
+static gboolean window_state_cb(GtkWidget* widget, GdkEventWindowState* event,
+                                gpointer) {
+  if ((event->changed_mask & GDK_WINDOW_STATE_FULLSCREEN) != 0 &&
+      window_channel != nullptr) {
+    g_autoptr(FlValue) value = fl_value_new_bool(
+        (event->new_window_state & GDK_WINDOW_STATE_FULLSCREEN) != 0);
+    fl_method_channel_invoke_method(window_channel, "fullscreenChanged", value,
+                                    nullptr, nullptr, nullptr);
+  }
+  return FALSE;
+}
+
+// ---- Keyboard ----------------------------------------------------------------
+// While an embedded browser has focus the plugin consumes every key for it,
+// which hid Ctrl from Flutter: Ctrl+wheel zoom then worked only by luck.
+// Modifier keys are still passed to the browser, but are also left for Flutter
+// so its idea of "Ctrl is held" is always right.
+static gboolean key_event_cb(GtkWidget* widget, GdkEventKey* event,
+                             gpointer data) {
+  const gboolean consumed = processKeyEventForCEF(widget, event, data);
+  switch (event->keyval) {
+    case GDK_KEY_Control_L:
+    case GDK_KEY_Control_R:
+    case GDK_KEY_Shift_L:
+    case GDK_KEY_Shift_R:
+    case GDK_KEY_Alt_L:
+    case GDK_KEY_Alt_R:
+    case GDK_KEY_Meta_L:
+    case GDK_KEY_Meta_R:
+    case GDK_KEY_Super_L:
+    case GDK_KEY_Super_R:
+      return FALSE;
+    default:
+      return consumed;
+  }
 }
 
 // Called when first Flutter frame received.
@@ -118,6 +198,8 @@ static void my_application_activate(GApplication* application) {
   FlView* view = fl_view_new(project);
   g_signal_connect(view, "key_press_event", G_CALLBACK(processKeyEventForCEF), nullptr);
   g_signal_connect(view, "key_release_event", G_CALLBACK(processKeyEventForCEF), nullptr);
+  g_signal_connect(view, "key_press_event", G_CALLBACK(key_event_cb), nullptr);
+  g_signal_connect(view, "key_release_event", G_CALLBACK(key_event_cb), nullptr);
   GdkRGBA background_color;
   // Background defaults to black, override it here if necessary, e.g. #00000000
   // for transparent.
@@ -133,6 +215,16 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
+  g_autoptr(FlStandardMethodCodec) window_codec =
+      fl_standard_method_codec_new();
+  window_channel = fl_method_channel_new(
+      fl_engine_get_binary_messenger(fl_view_get_engine(view)),
+      "dndreader/window", FL_METHOD_CODEC(window_codec));
+  fl_method_channel_set_method_call_handler(window_channel, window_channel_cb,
+                                            window, nullptr);
+  g_signal_connect(window, "window-state-event",
+                   G_CALLBACK(window_state_cb), nullptr);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }

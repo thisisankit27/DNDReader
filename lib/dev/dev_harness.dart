@@ -449,6 +449,14 @@ class _DevHarnessState extends State<DevHarness> {
           'equal' => (PhysicalKeyboardKey.equal, LogicalKeyboardKey.equal, '='),
           'minus' => (PhysicalKeyboardKey.minus, LogicalKeyboardKey.minus, '-'),
           '0' => (PhysicalKeyboardKey.digit0, LogicalKeyboardKey.digit0, '0'),
+          '2' => (PhysicalKeyboardKey.digit2, LogicalKeyboardKey.digit2, '2'),
+          'r' => (PhysicalKeyboardKey.keyR, LogicalKeyboardKey.keyR, 'r'),
+          'f11' => (PhysicalKeyboardKey.f11, LogicalKeyboardKey.f11, null),
+          'enter' => (
+            PhysicalKeyboardKey.enter,
+            LogicalKeyboardKey.enter,
+            null,
+          ),
           'escape' => (
             PhysicalKeyboardKey.escape,
             LogicalKeyboardKey.escape,
