@@ -50,3 +50,6 @@ app.*.map.json
 # Local development overrides (point at a local webview_cef checkout)
 pubspec_overrides.yaml
 dist/
+
+# Microsoft's WebView2 bootstrapper is fetched at build time, never committed.
+packaging/windows/MicrosoftEdgeWebview2Setup.exe

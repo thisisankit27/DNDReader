@@ -111,3 +111,80 @@ jobs:
           name: dndreader-windows-bundle
           path: build/windows/x64/runner/Release
           if-no-files-found: error
+
+      # --- W5: installer ---------------------------------------------------
+      # Microsoft's Evergreen bootstrapper (~2 MB). There is no stable hash to pin
+      # (Microsoft updates it), so its Authenticode signature is verified instead.
+      - name: Fetch WebView2 bootstrapper and verify its signature
+        shell: pwsh
+        run: |
+          $exe = 'packaging/windows/MicrosoftEdgeWebview2Setup.exe'
+          Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $exe
+          $sig = Get-AuthenticodeSignature $exe
+          $sig | Format-List Status, StatusMessage
+          $sig.SignerCertificate.Subject
+          "{0:N0} bytes" -f (Get-Item $exe).Length
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+            throw 'WebView2 bootstrapper signature is not a valid Microsoft Corporation signature'
+          }
+
+      - name: Install Inno Setup if the image lacks it
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue) -and -not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          Test-Path $iscc
+
+      - name: Build installer
+        shell: bash
+        run: packaging/windows/build-installer.sh
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: dndreader-windows-installer
+          path: dist/DNDReader-*-setup-x64.exe
+          if-no-files-found: error
+
+      # Executes the installer on the runner. Evidence about install/uninstall
+      # mechanics and that the process starts and stays up — NOT about how the
+      # app looks or behaves. Informational: a failure here is reported, not
+      # hidden, and does not by itself fail the build.
+      - name: Smoke test (silent install, launch, uninstall)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist/DNDReader-*-setup-x64.exe | Select-Object -First 1).FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'dnd-install'
+          $log = Join-Path $env:RUNNER_TEMP 'install.log'
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$dir","/LOG=$log" -Wait -PassThru
+          "installer exit code: $($p.ExitCode)"
+          foreach ($f in 'dndreader.exe','WebView2Loader.dll','flutter_windows.dll','licenses\README.txt','unins000.exe') {
+            "{0,-28} {1}" -f $f, (Test-Path (Join-Path $dir $f))
+          }
+          $cmd = (Get-ItemProperty 'HKCU:\Software\Classes\DNDReader.pdf\shell\open\command').'(default)'
+          "open command: $cmd"
+          $owp = (Get-Item 'HKCU:\Software\Classes\.pdf\OpenWithProgids').Property
+          "OpenWithProgids: $owp"
+          Get-Content $log -Tail 5
+
+          $app = Start-Process (Join-Path $dir 'dndreader.exe') -PassThru
+          Start-Sleep -Seconds 15
+          $app.Refresh()
+          if ($app.HasExited) {
+            "APP EXITED within 15 s, exit code $($app.ExitCode)"
+            exit 1
+          }
+          "app alive after 15 s; window title: '$($app.MainWindowTitle)'"
+          $size = Join-Path $env:APPDATA 'dndreader\window-size'
+          "window-size file exists: $(Test-Path $size)"
+          if (Test-Path $size) { "window-size contents: $(Get-Content $size)" }
+          Stop-Process -Id $app.Id -Force
+
+          $u = Start-Process (Join-Path $dir 'unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES' -Wait -PassThru
+          Start-Sleep -Seconds 3
+          "uninstaller exit code: $($u.ExitCode)"
+          "install dir removed: $(-not (Test-Path (Join-Path $dir 'dndreader.exe')))"
+          "ProgId removed: $(-not (Test-Path 'HKCU:\Software\Classes\DNDReader.pdf'))"
