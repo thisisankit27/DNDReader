@@ -160,6 +160,32 @@ class _DevHarnessState extends State<DevHarness> {
     await Future<void>.delayed(const Duration(milliseconds: 80));
   }
 
+  Future<void> _rightClick(Offset p) async {
+    await _hover(p);
+    final id = ++_pointerId;
+    _inject(
+      (v) => PointerDownEvent(
+        position: p,
+        kind: PointerDeviceKind.mouse,
+        device: 7,
+        pointer: id,
+        buttons: kSecondaryMouseButton,
+        viewId: v,
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    _inject(
+      (v) => PointerUpEvent(
+        position: p,
+        kind: PointerDeviceKind.mouse,
+        device: 7,
+        pointer: id,
+        viewId: v,
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+  }
+
   Future<void> _drag(Offset a, Offset b, {int steps = 12}) async {
     await _hover(a);
     final id = ++_pointerId;
@@ -262,6 +288,8 @@ class _DevHarnessState extends State<DevHarness> {
         await Future<void>.delayed(const Duration(milliseconds: 500));
       case 'click':
         await _click(Offset(double.parse(a[1]), double.parse(a[2])));
+      case 'rclick':
+        await _rightClick(Offset(double.parse(a[1]), double.parse(a[2])));
       case 'drag':
         await _drag(
           Offset(double.parse(a[1]), double.parse(a[2])),

@@ -895,3 +895,23 @@ an editable page number, and Esc to leave full screen.
 - **Not verified:** typing digits into the page field in the running app (the harness cannot feed the text-input
   channel; covered by widget tests); full screen on X11 or other window managers; narrow-window header (<560 px)
   was checked only by the existing no-overflow test.
+
+## Post-MVP: right-click menu and double-click (2026-10-14, branch `feat/m9-menu-doubleclick`, v0.1.3)
+
+Owner report (with screenshot): the right-click menu was hidden behind the "Find meaning" pill, and double-click
+did not select a word.
+
+- **Double-click:** pdfrx delivers `PdfViewerGeneralTapType.doubleTap` but does nothing with it (only a touch
+  long-press selects a word). The viewer now calls `textSelectionDelegate.selectWord` for a double-click on text.
+  Verified in the app: double-click on a character selects "efficient".
+- **Right-click menu:** reproduced exactly (pill painted over the menu, because pdfrx draws the menu inside the
+  viewer, below the pill in the stack). Fixed by (1) hiding the pill while the menu is on screen, via a presence
+  flag tied to the menu widget's lifecycle, and (2) drawing the menu ourselves. pdfrx's default menu was also
+  almost unreadable in the dark theme (pale surface, faint text), so it now uses the theme's own surface colours.
+  Items: Copy, **Find meaning** (new; only when text is selected), Select all.
+- **Verified:** pill hidden and menu legible on right-click over a selection; "Find meaning" from the menu loaded
+  the results panel (`q=efficient`); a pill-less state after Copy (pdfrx clears the selection after copying — its
+  behaviour, not changed).
+- **Not verified:** the light theme (screenshots were dark); triple-click (not implemented); right-click with the
+  contents panel open. (The Ctrl+C / Ctrl+A hints in the menu are pdfrx's own key bindings, read from its source,
+  not exercised here.)
