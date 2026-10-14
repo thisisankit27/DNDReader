@@ -16,7 +16,16 @@ class PdfView extends StatelessWidget {
     this.onTextSelectionChange,
     this.onDocumentTap,
     this.initialPage,
+    this.contentInsets = EdgeInsets.zero,
   });
+
+  /// Mouse-wheel scroll multiplier. The Linux embedder reports about 53 px per
+  /// wheel notch; pdfrx's default of 0.2 turned that into ~10 px, which read as
+  /// painfully slow. 2.0 gives ~105 px per notch, close to a browser.
+  static const double wheelScrollFactor = 2.0;
+
+  /// Pixels moved per arrow-key press.
+  static const double arrowKeyStep = 60;
 
   /// Held by the owner for the lifetime of one open document. Creating a new
   /// ref on every build (what `PdfViewer.file` does) stranded the first load
@@ -34,6 +43,11 @@ class PdfView extends StatelessWidget {
   /// Page to show first (restoring the last position).
   final int? initialPage;
 
+  /// Space on the left/right covered by overlay panels (contents, search).
+  /// Added as scrollable room so everything under a panel can be panned clear
+  /// of it; the document is not resized.
+  final EdgeInsets contentInsets;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -43,6 +57,9 @@ class PdfView extends StatelessWidget {
       initialPageNumber: initialPage ?? 1,
       params: PdfViewerParams(
         margin: 12,
+        boundaryMargin: contentInsets == EdgeInsets.zero ? null : contentInsets,
+        scrollByMouseWheel: wheelScrollFactor,
+        scrollByArrowKey: arrowKeyStep,
         backgroundColor: Colors.transparent,
         textSelectionParams: PdfTextSelectionParams(
           enabled: true,

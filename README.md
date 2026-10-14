@@ -30,8 +30,8 @@ README should be read as a claim that a platform other than Ubuntu works.
 
 ## What it does
 
-- Opens a PDF (file picker, `Ctrl+O`, command-line argument, or "Open With"), scrolls, zooms, shows `page / total`.
-- **Contents** (`Ctrl+T`): the document's own outline as a nested list in a left-edge panel; click to jump.
+- Opens a PDF (file picker, `Ctrl+O`, command-line argument, or "Open With"), scrolls (wheel, keys, draggable vertical and horizontal scrollbars), zooms, shows `page / total`.
+- **Contents** (`Ctrl+T`): the document's own outline in a left-edge panel; topics expand and collapse, click a title to jump.
 - Select text → **Find meaning** (or `Ctrl+E`) → Google Search results in a side panel on the right;
   `Esc` closes it and you are exactly where you were.
 - Remembers theme, zoom, last document and page, recent documents and window size.
