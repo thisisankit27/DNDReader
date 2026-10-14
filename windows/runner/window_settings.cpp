@@ -1,8 +1,10 @@
 #include "window_settings.h"
 
+// windows.h first: knownfolders.h relies on macros it brings in (EXTERN_C, GUID).
+#include <windows.h>
+
 #include <knownfolders.h>
 #include <shlobj.h>
-#include <windows.h>
 
 #include <filesystem>
 #include <fstream>
