@@ -253,6 +253,15 @@ void main() {
       view.emitUrl(gated);
       view.emitLoadError(gated, text: 'unknown', code: 0);
       expect(s.phase, SearchPhase.loading, reason: 'the error is held');
+      // A real adapter's own immediate trailing end for the failed URL is not
+      // a page load and is suppressed (docs/search-web-view-contract.md); the
+      // fake does the same, so the genuine completion is a second, later end.
+      view.emitLoadEnd(gated);
+      expect(
+        s.phase,
+        SearchPhase.loading,
+        reason: 'that end was the engine\'s own noise, not the page',
+      );
       view.emitLoadEnd(gated);
       expect(s.phase, SearchPhase.loaded);
       await Future<void>.delayed(const Duration(milliseconds: 120));
@@ -278,17 +287,37 @@ void main() {
       expect(s.phase, SearchPhase.failed);
     });
 
-    test(
-      'a page that finishes loading after a failure recovers from it',
-      () async {
-        final s = await onResultsPage();
-        view.emitUrl(gated);
-        view.emitLoadError(gated, text: 'hostNameNotResolved', code: 13);
-        expect(s.phase, SearchPhase.failed);
-        view.emitLoadEnd(gated);
-        expect(s.phase, SearchPhase.loaded);
-      },
-    );
+    test('a genuine second load-end after a failure recovers from it '
+        '(defensive: neither shipped adapter is known to produce this shape — '
+        'see docs/search-web-view-contract.md)', () async {
+      final s = await onResultsPage();
+      view.emitUrl(gated);
+      view.emitLoadError(gated, text: 'hostNameNotResolved', code: 13);
+      expect(s.phase, SearchPhase.failed);
+      // The engine's own immediate trailing end for the failed URL is
+      // suppressed, same as a real adapter; only a later, second end is a
+      // genuine completion with no Dart-side navigation in between.
+      view.emitLoadEnd(gated);
+      expect(
+        s.phase,
+        SearchPhase.failed,
+        reason: 'that end was the engine\'s own noise, not the page',
+      );
+      view.emitLoadEnd(gated);
+      expect(s.phase, SearchPhase.loaded);
+    });
+
+    test('Retry after a failure recovers via an explicit navigation '
+        '(the path verified on the real Linux app, REPORT.md §9)', () async {
+      final s = await onResultsPage();
+      view.emitUrl(gated);
+      view.emitLoadError(gated, text: 'hostNameNotResolved', code: 13);
+      expect(s.phase, SearchPhase.failed);
+      await s.retry();
+      expect(s.phase, SearchPhase.loading);
+      view.emitLoadEnd(gated);
+      expect(s.phase, SearchPhase.loaded);
+    });
 
     test('a browser error page still fails, even after a held error', () async {
       final s = await onResultsPage();

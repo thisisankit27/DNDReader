@@ -1,0 +1,49 @@
+# Shared CI: format, analyze, and the unit/widget test suite (which includes the
+# Layer 1 SearchWebView conformance suite — see docs/search-web-view-contract.md).
+# Platform-specific checks live in linux.yml and windows.yml.
+name: ci
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.47.7
+
+jobs:
+  analyze_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # pubspec_overrides.yaml is gitignored and points at a developer's local checkout. It must
+      # never be what CI resolves against; CI resolves the SHA pinned in pubspec.yaml.
+      - name: No local dependency overrides
+        run: test ! -e pubspec_overrides.yaml
+
+      - run: flutter pub get
+
+      - name: Fork resolves from the pinned git ref
+        run: |
+          block=$(sed -n '/^  webview_cef:/,/^  [a-z_]*:$/p' pubspec.lock)
+          echo "$block"
+          grep -q 'source: git' <<<"$block"
+
+      - run: dart format --set-exit-if-changed .
+      - run: flutter analyze
+      - run: flutter test

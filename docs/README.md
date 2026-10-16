@@ -9,6 +9,7 @@
 | [`completion-report-windows.md`](completion-report-windows.md) | Windows port delivery report | Historical (see its update banner) |
 | [`windows-verification/REPORT.md`](windows-verification/REPORT.md) | Defects D1–D7 from the real-machine run, how they were fixed and verified (§0), and the Linux regression/release-candidate passes (§9–10) | Current evidence |
 | [`windows-owner-test.md`](windows-owner-test.md) | What to install and test on Windows | Current |
+| [`search-web-view-contract.md`](search-web-view-contract.md) | The `SearchWebView` adapter contract: what a CEF/WebView2/future adapter must do | Current |
 | [`linux-0.2.0-release-checklist.md`](linux-0.2.0-release-checklist.md) | Post-install checks for the `.deb` | Done (owner-confirmed) |
 | [`linux-0.2.1-release-checklist.md`](linux-0.2.1-release-checklist.md) | Post-install checks for the 0.2.1 GNOME 50 crash fix | Needs the owner's install |
 

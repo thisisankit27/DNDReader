@@ -1,0 +1,87 @@
+# Linux build + the Layer 2 SearchWebView conformance suite
+# (docs/search-web-view-contract.md) against the real sandboxed CEF adapter.
+#
+# What a green run proves: the release bundle still compiles, and (if the
+# conformance step isn't skipped below) the real sandboxed engine starts and
+# behaves per contract under Xvfb on this runner. It does NOT prove the app
+# looks or behaves right interactively — that is still the owner's pass.
+name: linux
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.47.7
+
+jobs:
+  build_and_conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: No local dependency overrides
+        run: test ! -e pubspec_overrides.yaml
+
+      # Build prerequisites (verified empirically, docs/progress.md "Build deps") plus what
+      # running the real sandboxed engine headless needs: libegl1/libgles2 (CEF's GL/EGL,
+      # also hand-added to the .deb's Depends — docs/implementation-plan.md), apparmor (to
+      # load the dev profile below), xvfb (a virtual X server: a clean-container run already
+      # showed the app starts and renders under it — docs/progress.md "Clean Ubuntu 26.04
+      # container").
+      - name: Install Linux build and runtime prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-14-dev \
+            libegl1 libgles2 apparmor xvfb
+
+      - run: flutter pub get
+
+      # Proves the release bundle still compiles (same role as windows.yml's build_windows).
+      - name: Build (release)
+        run: flutter build linux --release
+
+      # `flutter test ... -d linux` builds and runs the DEBUG bundle, not the release one, so
+      # the AppArmor profile below must be scoped to the debug path. Build it explicitly first:
+      # install-dev-apparmor.sh refuses to run before the executable it profiles exists.
+      - name: Build (debug, for the conformance run)
+        run: flutter build linux --debug
+
+      # Grants the built binary `userns` so its CEF sandbox can start (Ubuntu 24.04+ restricts
+      # unprivileged user namespaces by default). Scoped to one exact path, reviewable, and the
+      # opposite of DNDREADER_ALLOW_UNSANDBOXED_DEV: it enables the real sandbox rather than
+      # disabling it. Never use the dev override here.
+      - name: Install the dev AppArmor profile for the debug bundle
+        continue-on-error: true
+        run: sudo packaging/linux/dev/install-dev-apparmor.sh build/linux/x64/debug/bundle
+
+      # UNVERIFIED as of this change: nobody has observed this step pass or fail on a hosted
+      # runner yet (this agent has no sudo and could not start the integration_test harness at
+      # all in its own environment — see docs/progress.md). continue-on-error so a genuine
+      # Xvfb/sandbox incompatibility here doesn't block the rest of CI; if it keeps failing,
+      # read the log before assuming it's the sandbox — rendering under Xvfb can fail for
+      # unrelated GL reasons (try LIBGL_ALWAYS_SOFTWARE=1 first). If the sandboxed engine
+      # genuinely cannot start on a hosted runner, document that plainly rather than weakening
+      # the sandbox, and run this locally instead:
+      #   flutter build linux --debug
+      #   sudo packaging/linux/dev/install-dev-apparmor.sh build/linux/x64/debug/bundle
+      #   xvfb-run -a flutter test integration_test/search_web_view_conformance_test.dart -d linux
+      - name: Layer 2 conformance (real CEF adapter, headless)
+        continue-on-error: true
+        run: xvfb-run -a flutter test integration_test/search_web_view_conformance_test.dart -d linux

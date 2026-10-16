@@ -17,12 +17,36 @@ class SearchUnavailableException implements Exception {
   String toString() => 'SearchUnavailableException: $reason';
 }
 
+/// What an adapter does or does not do, for behaviour the contract allows to
+/// vary by engine rather than requiring of every adapter.
+///
+/// Read by the conformance suite to decide which assertions apply — e.g. an
+/// engine that does not report history must never call [SearchWebView.onHistoryChanged]
+/// at all, not call it once with a default. See `docs/search-web-view-contract.md`.
+@immutable
+class SearchWebViewCapabilities {
+  const SearchWebViewCapabilities({
+    required this.reportsHistory,
+    required this.releaseFocusIsNoop,
+  });
+
+  /// Whether this adapter ever calls [SearchWebView.onHistoryChanged].
+  final bool reportsHistory;
+
+  /// Whether [SearchWebView.releaseFocus] has no observable effect on this adapter.
+  final bool releaseFocusIsNoop;
+}
+
 /// One long-lived embedded browser for search results.
 ///
 /// The seam between shared reader logic and the platform webview (plan §1):
 /// Linux uses CEF (a hardened fork of `webview_cef`); Windows uses WebView2
 /// (`webview_flutter_windows`); mobile will use `webview_flutter` in M7.
 /// Everything above this interface is shared.
+///
+/// The cross-adapter rules every implementation must follow — including the
+/// failed-load-end rule below and the capability flags above — are specified
+/// in `docs/search-web-view-contract.md`.
 abstract class SearchWebView {
   /// The implementation for this platform; an always-unavailable stand-in
   /// elsewhere (mobile arrives in M7 and is not claimed to work).
@@ -45,6 +69,9 @@ abstract class SearchWebView {
   Future<void> loadUrl(Uri url);
   Future<void> goBack();
   Future<void> reload();
+
+  /// What this adapter does or does not do (docs/search-web-view-contract.md).
+  SearchWebViewCapabilities get capabilities;
 
   /// Gives keyboard focus back to the Flutter view. Called when the panel
   /// closes: a native webview can keep OS-level focus after it is hidden, which
@@ -137,6 +164,14 @@ class _UnsupportedSearchWebView implements SearchWebView {
       'The embedded search panel is not available on this platform yet.',
     );
   }
+
+  // Never actually exercised: start() always throws above, so nothing ever
+  // reads this. The values are arbitrary.
+  @override
+  SearchWebViewCapabilities get capabilities => const SearchWebViewCapabilities(
+    reportsHistory: false,
+    releaseFocusIsNoop: true,
+  );
 
   @override
   Future<void> loadUrl(Uri url) async {}
