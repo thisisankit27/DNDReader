@@ -1680,3 +1680,99 @@ any Windows path); a desktop with no `org.freedesktop.portal.Settings` implement
 unpackaged release build instead, per the no-`sudo` rule); clean quit via a real window-manager close
 request (no `xdotool`/`wmctrl` here); the Layer 2 conformance suite with the AppArmor dev profile
 installed.
+
+## Narrow the GNOME 50 workaround, fix the AppArmor ABI pin, make Linux conformance runnable (2026-10-16, Ubuntu, branch `fix/gnome50-xsettings-crash`)
+
+Follows the 0.2.1 entry above. PR #1 (`feat/search-web-view-contract`) merged to `main` between
+sessions; this branch was rebased onto it (merge commit `73c6755`) before starting, since the task
+assumed its conformance suite and contract doc already existed.
+
+**1. GTK_USE_PORTAL narrowed from unconditional to conditional.** `linux/runner/main.cc` now looks
+up `org.gnome.settings-daemon.plugins.xsettings` via `g_settings_schema_source_get_default()` and
+only sets the variable when that schema exists but lacks the `antialiasing` key — the exact broken
+condition, not a proxy for it. Deliberately does **not** also gate on the Wayland-vs-X11 backend
+(the comment in `main.cc` explains why: reliably replicating GDK's own backend selection could not
+be verified against GTK's source here, and under-applying the fix would silently bring the crash
+back, which is worse than over-applying it on an X11 session that happens to share the broken
+schema). **Verified**, both branches: a standalone one-off unit of the predicate (`gio-2.0`,
+compiled outside the Flutter build) against the real system schema (TRUE) and a `GSETTINGS_SCHEMA_DIR`
+fixture schema that still has the key (FALSE); a temporary `fprintf` after the real `setenv()` call
+in the actual app binary, removed before committing, confirming the same on both branches end to
+end; the app still starts on this machine with no env var set by hand.
+
+**2. AppArmor ABI pin: `abi/5.0` → `abi/4.0`.** **Verified** directly in the already-existing CI
+run from PR #1 (`gh run view 38612623691 --log`, the `linux` job's "Install the dev AppArmor
+profile" and "Layer 2 conformance" steps): `apparmor_parser` refused the profile with `Could not
+open 'abi/5.0': No such file or directory`, so every test needing the sandbox failed closed with
+`SearchUnavailableException`. `userns` rules were introduced in AppArmor's abi/4.0 — read: Ubuntu's
+own 24.04 release notes document a profile declaring exactly `abi <abi/4.0>,` for this exact
+restriction — and nothing this profile does needs anything from 5.0 (checked: `userns_create`
+mediation is present in both 4.0 and 5.0 on this machine; 5.0 only adds unrelated classes —
+`io_uring`, extended capabilities, a more detailed `userns_create` grammar — this profile uses
+none of). Repinned both `packaging/linux/apparmor/dndreader` and
+`packaging/linux/dev/install-dev-apparmor.sh`'s generated profile, and the illustrative snippet in
+`docs/implementation-plan.md`. **Verified**: `apparmor_parser -Q -K` (parses/validates, skips only
+the root-requiring kernel-load step) accepts both on this machine, which has abi/4.0. Actually
+*loading* it needs root or a real CI run — not done here; see below.
+
+**3. Layer 2 conformance restructured to share one engine across the file.** The suite's per-test
+`SearchWebView.create()` design passed 12/12 on Windows but killed the app on Linux as soon as a
+*second* real engine was created in the same process (CEF: one `start()`/`dispose()` cycle per
+process). Restructured so one engine starts once (`setUpAll`) and every test drives further
+navigation on it; the lifecycle tests (dispose before/after start, no callback after dispose) run
+last, against that same instance, since disposing it ends its life. Nothing dropped or weakened —
+the same checks run, just sequenced differently — and this is not Linux-specific special-casing:
+sharing one engine for a whole run is what `SearchSession` already does in production, so it is a
+more representative test on both platforms, not a narrower one; no `Platform.is*` branching was
+added. `test/search/search_web_view_conformance.dart` gained
+`runSearchWebViewConformanceOnSharedEngine` alongside the unchanged, still-`createFn`-based
+`runSearchWebViewConformance` (kept exactly as-is for Layer 1/`FakeSearchWebView`, which has no such
+constraint).
+
+Found and fixed, in passing: `CefSearchWebView.dispose()` was not idempotent (`_cefStarted` never
+reset, so a second `dispose()` call ran `WebviewManager().quit()` a second time) — small, obviously
+correct, fixed in `search_web_view_desktop.dart`. **Did not fix**, because it needs more than a
+small patch: even a single real `WebviewManager().quit()` leaves the process unable to reliably
+keep running Dart/test code afterward. Reproduced identically before and after the idempotency fix,
+both in the full 11-test suite and in a minimal two-test isolation (`--name` filtering to just the
+two lifecycle tests, nothing else): the final assertion ("no callback fires after dispose")
+reproducibly fails to *complete* — no Dart exception, no native stderr captured in `--verbose`
+output, "did not complete" rather than a reported failure — consistent with an async/native
+teardown race inside the pinned `webview_cef` fork or CEF itself. Documented in
+`docs/search-web-view-contract.md`'s "Known adapter non-conformance" section and inline on the test
+itself; not silently dropped.
+
+**Verified**, running the restructured suite on this machine (`flutter build linux --debug` then
+`flutter test integration_test/search_web_view_conformance_test.dart -d linux`), **with no AppArmor
+profile installed at all**: 10 of 12 checks pass cleanly in one process (every bespoke scenario,
+load-end-forwarded, recovery-via-navigation, releaseFocus, dispose-before-start, and
+dispose-after-start-is-idempotent). The sandbox started without a profile here, same caveat as the
+0.2.1 entry above — not evidence the profile is unneeded on a normal desktop session, and this
+agent did not run `sudo` to test with one installed; the owner's command, surfaced but not run:
+```
+flutter build linux --debug
+sudo packaging/linux/dev/install-dev-apparmor.sh build/linux/x64/debug/bundle
+xvfb-run -a flutter test integration_test/search_web_view_conformance_test.dart -d linux
+```
+`SearchUnavailableException` was **not** the failure mode in any run this session — the sandbox
+started every time it was tried; the one known-unreliable assertion is a process-completion
+problem, not a "no profile" one. Given that, `linux.yml`'s Layer 2 step should **stay
+`continue-on-error: true`** — the suite does not yet reach a clean pass on Linux, for a reason
+outside this branch's reach (the pinned third-party plugin's shutdown behaviour).
+
+**Windows**: not run (no Windows access this session). The restructuring changes Layer 2's
+behaviour there too (shared engine instead of one per test) — the task's own account says the old,
+per-test-fresh design passed 12/12 on `WebView2`, and `WebView2SearchWebView` has no documented
+issue with being reused across navigations (unlike CEF's one-process-one-engine limit), so this is
+expected to keep passing, but it is **not verified** — left to a real Windows CI run.
+
+**0.2.2 built.** `flutter build linux --release` → `bash packaging/linux/build-deb.sh` →
+`dist/dndreader_0.2.2-1_amd64.deb`, 341,562,916 bytes, sha256
+`b759d3c01e5c55887262ef94c8719caca60c89852272c16f3788a0aa62ba2de5`. `Depends:` re-derived; visually
+identical to the 89-entry list recorded for 0.2.1 above (no 0.2.1 `.deb` persisted on this machine
+to diff byte-for-byte against, but neither change here touches a linked library, and the derivation
+command and inputs are the same). **Verified**: the binary extracted from this `.deb` (no install)
+starts cleanly with an explicit `test_fixtures/outline.pdf` argument, and the packaged AppArmor
+profile parses with `apparmor_parser -Q -K`. Checklist: `docs/linux-0.2.2-release-checklist.md` —
+flags, unlike 0.2.1, that the profile conffile's *content* changed this time, so an owner upgrading
+must take the new version if `dpkg` asks, not keep the old one.
