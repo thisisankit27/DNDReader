@@ -42,10 +42,17 @@ tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 cat >"$tmp" <<PROFILE
 # Development profile for DNDReader — installed by install-dev-apparmor.sh.
-abi <abi/5.0>,
+# abi/4.0, not abi/5.0: see the comment in packaging/linux/apparmor/dndreader
+# (the shipped profile this mirrors) — userns rules need 4.0, nothing here
+# needs 5.0, and 4.0 is what Ubuntu 24.04 actually has.
+abi <abi/4.0>,
 include <tunables/global>
 
-profile $profile "$exe" flags=(unconfined) {
+# Declared for the same reason as in the shipped profile: AppArmor 4.x rejects an
+# undeclared @{exec_path}, and 4.x is what Ubuntu 24.04 ships.
+@{exec_path} = "$exe"
+
+profile $profile @{exec_path} flags=(unconfined) {
   userns,
   @{exec_path} mr,
 }

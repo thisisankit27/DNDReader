@@ -15,7 +15,11 @@ No AI engine of our own. No API keys. No accounts. No backend.
 
 ## Status
 
-**Version 0.2.0: Ubuntu and Windows. No release has been published.** The Ubuntu build is verified on Ubuntu 26.04 only (installed `.deb` and AppArmor profile confirmed by the owner); the Windows build is described below. What has actually been observed — and what has not — is in
+**Version 0.2.2: Ubuntu and Windows. No release has been published.** 0.2.2 is Linux-only: narrows
+0.2.1's GNOME 50 startup-crash workaround to only apply when actually needed, and fixes the AppArmor
+profile's ABI pin (`abi/5.0` → `abi/4.0`) so the sandbox installs on Ubuntu 24.04 and on CI, not just
+on this machine's newer Ubuntu (see progress.md). The Windows build is unchanged from 0.2.0 and has
+not been rebuilt or re-verified as part of this fix. The Ubuntu build is verified on Ubuntu 26.04 only (installed `.deb` and AppArmor profile confirmed by the owner); the Windows build is described below. What has actually been observed — and what has not — is in
 [docs/progress.md](docs/progress.md); the plan is in [docs/implementation-plan.md](docs/implementation-plan.md).
 
 | Platform | State |
@@ -99,7 +103,7 @@ flutter test
 flutter build linux --release
 
 packaging/linux/build-deb.sh          # → dist/dndreader_<ver>-1_amd64.deb
-sudo apt install ./dist/dndreader_0.2.0-1_amd64.deb
+sudo apt install ./dist/dndreader_0.2.2-1_amd64.deb
 ```
 
 The `.deb` is built for the Ubuntu release it is built on (its `Depends` are derived from the
@@ -114,6 +118,14 @@ DNDReader requires Chromium's sandbox for the search panel. On Ubuntu 24.04+
 namespace that sandbox needs, so the package installs `/etc/apparmor.d/dndreader` and loads it. **If
 the sandbox cannot start, the app does not fall back to an unsandboxed browser**: the panel shows
 "Search unavailable" and offers *Open in browser*.
+
+The profile declares `abi <abi/4.0>,` — AppArmor's `userns` rule exists from abi/4.0 onward, which is
+what Ubuntu ships starting with 24.04, the same release that introduced the restriction this profile
+is for. A working sandbox therefore needs Ubuntu 24.04 or later (older Ubuntu doesn't need this
+profile at all: the restriction it works around doesn't exist there, so the sandbox just starts
+unconfined). A system with an `abi/4.0` file missing or an AppArmor build older than that will fail
+to load the profile (`apparmor_parser` refuses it outright) and search will be unavailable for the
+same fail-closed reason.
 
 - Running a development build from the source tree is therefore unsandboxed-unavailable by default.
   Either install the profile for your build directory (root; read the script first):

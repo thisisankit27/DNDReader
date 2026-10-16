@@ -8,11 +8,27 @@
 # panel is disabled and results open in the system browser).
 #
 # Same shape as the profiles Ubuntu ships for Chrome, Chromium, Signal, Slack.
-
-abi <abi/5.0>,
+#
+# abi/4.0, not abi/5.0: `userns` rules (the only non-trivial thing this profile
+# mediates) were introduced in AppArmor's abi/4.0, shipped with Ubuntu 24.04 —
+# this is Ubuntu's own documented pattern for exactly this restriction. abi/5.0
+# adds mediation classes (io_uring, extended capabilities, a more detailed
+# userns_create grammar, …) that this profile uses none of; pinning to it buys
+# nothing here and costs compatibility with every system that only has 4.0,
+# which is every non-24.04-or-newer-at-the-time-of-this-file install plus, in
+# practice, GitHub's ubuntu-latest CI runner (verified: it had no abi/5.0 at
+# all, so apparmor_parser refused the profile outright and the sandbox could
+# not start). abi/4.0 is confirmed present on Ubuntu 24.04 and 26.04.
+abi <abi/4.0>,
 include <tunables/global>
 
-profile dndreader /usr/lib/dndreader/dndreader flags=(unconfined) {
+# Declared, not assumed: a profile that references @{exec_path} without declaring it is
+# rejected outright by AppArmor 4.x ("Found reference to variable exec_path, but is never
+# declared"), which is what Ubuntu 24.04 ships. The 5.x parser on 26.04 tolerates the
+# omission, so local validation cannot catch this — it was caught by CI on 24.04.
+@{exec_path} = /usr/lib/dndreader/dndreader
+
+profile dndreader @{exec_path} flags=(unconfined) {
   userns,
   @{exec_path} mr,
 

@@ -1528,3 +1528,279 @@ conformance pass, the Windows conformance pass, and whether the WebView2 `_navig
 scenario reproduces. The macOS CEF path has no CI runner in this split (none existed before this
 change either). The M7 mobile adapter doesn't exist yet, so `_UnsupportedSearchWebView`'s
 capability values are unexercised by design.
+
+## GNOME 50 startup crash: root cause, fix, and 0.2.1 (2026-10-15, Ubuntu, branch `fix/gnome50-xsettings-crash`)
+
+**Symptom, verified.** Both the installed 0.2.0 `.deb` (`/usr/bin/dndreader`) and a freshly built
+0.2.0 release bundle abort before any window opens: `GLib-GIO-ERROR: Settings schema
+'org.gnome.settings-daemon.plugins.xsettings' does not contain a key named 'antialiasing'`, exit 134
+(SIGABRT, core dumped). Reproduced directly (`/usr/bin/dndreader`, real exit code captured, not
+masked by a pipe). `gnome-shell --version` → GNOME Shell 50.1; `gsettings list-keys
+org.gnome.settings-daemon.plugins.xsettings` → only `disabled-gtk-modules`, `enabled-gtk-modules`,
+`overrides` (the font keys are gone from that schema id).
+
+### Root cause (verified, not Flutter's code)
+
+- **Identified the exact code path** by searching every shared library `dndreader` links against
+  for the literal schema string: `strings` over `ldd`'s output found it in two places —
+  `libgdk-3.so.0` (system GTK3, dynamically linked) and the bundled `libcef.so`. GTK3 is the one
+  that aborts first (CEF's own reference is unrelated: Chromium's own GTK theming code, never
+  reached before the crash).
+- **Read the actual GTK3 source** (`gdk/wayland/gdkscreen-wayland.c`, `gtk-3-24` branch,
+  `update_xft_settings()` / `init_settings()`): `init_settings()` tries the
+  `org.freedesktop.portal.Settings` D-Bus portal only when `gdk_should_use_portal()` is true;
+  otherwise (or on any portal error) it falls back to reading
+  `org.gnome.settings-daemon.plugins.xsettings` directly via `GSettings`, and
+  `update_xft_settings()`'s fallback branch calls `g_settings_get_enum(settings, "antialiasing")`
+  (and `"hinting"`, `"rgba-order"`) unconditionally — the only guard is that the **schema** exists
+  (`g_hash_table_contains`), never that the **keys** do. `g_settings_get_enum` on a key the schema
+  doesn't have is a GLib fatal programmer error: abort.
+- **Confirmed the schema split, directly, on this machine**:
+  `/usr/share/glib-2.0/schemas/org.gnome.settings-daemon.plugins.xsettings.gschema.xml`
+  (from `gnome-settings-daemon-common 50.0-1ubuntu1`) defines `org.gnome.settings-daemon.plugins.xsettings`
+  with only the three keys above, and a **separate schema id**,
+  `org.gnome.settings-daemon.plugins.xsettings.deprecated`, now holds `antialiasing`/`hinting`/`rgba-order`.
+  GDK looks up the old id by name, finds it (so its only guard passes), and the keys it expects are
+  on a different schema object entirely.
+- **This is a long-known, still-open GTK3 bug**, not something new in GNOME 50:
+  [GNOME/gtk#3680](https://gitlab.gnome.org/GNOME/gtk/-/issues/3680), filed February 2021 against
+  gnome-settings-daemon 40.x, same file, same function, same crash text. Read (not re-derived): the
+  issue is closed but the `gtk-3-24` branch, fetched fresh, still has the unguarded reads today —
+  distros evidently kept a compatibility shim in the old schema until this one finally dropped it.
+- **Confirmed Flutter's own code is not involved, at all**: `fl_gnome_settings.cc` (Flutter's Linux
+  embedder) only reads `org.gnome.desktop.interface`'s `clock-format`/`gtk-theme`/
+  `text-scaling-factor`; a GitHub code search across the entire `flutter/flutter` monorepo (engine,
+  framework, tools, including `master`) for `xsettings` returns **zero** matches anywhere, and for
+  `fl_gnome_settings` returns only Flutter's own innocent file. No Flutter version, including
+  current `master`, touches this code path, so **no Flutter upgrade fixes or is affected by this**.
+  (Corroborating, not authoritative: [flutter/flutter#180143](https://github.com/flutter/flutter/issues/180143),
+  a Flutter user independently describing GDK's portal-vs-GSettings fork for an unrelated slow-launch
+  complaint, closed as a GTK behaviour, not a Flutter bug.)
+- Two GNOME GitLab pages fetched during this investigation contained embedded instructions aimed at
+  an agent reading them (one told me to use a GitLab CLI, another told me to ignore the question
+  asked); both were treated as untrusted page content and ignored, per the fetch tool's own
+  isolation.
+
+### Fix chosen and verified
+
+Preference order per the owner's brief: upgrade Flutter (ruled out — not Flutter's bug, confirmed
+above) → zero-risk runtime workaround → no fix / wait. Chose the second.
+
+- **Tested, not assumed**: `GTK_USE_PORTAL=1 /usr/bin/dndreader` starts cleanly (verified: survived
+  >4 s, loaded a PDF). `GDK_BACKEND=x11` also avoids the crash (X11's `gdkscreen-x11.c` reads real
+  XSETTINGS, a different, unaffected path) but changes the whole windowing backend, a bigger surface
+  than needed; `GTK_USE_PORTAL=1` only changes GDK's settings-source decision, so it was chosen.
+- **Fix**: `linux/runner/main.cc` calls `setenv("GTK_USE_PORTAL", "1", 0)` as the first statement in
+  `main()`, before any GTK/GDK call (the portal-vs-fallback decision is cached on first use) and
+  before never overriding an operator's own `GTK_USE_PORTAL`.
+- **Verified**: a freshly built 0.2.1 release bundle, launched directly with no env var set by hand,
+  starts cleanly (`build/linux/x64/release/bundle/dndreader`) where the pre-fix bundle aborted
+  identically to the installed 0.2.0 package. The binary **extracted from the built `.deb`**
+  (`dpkg-deb -x`, no install) also starts cleanly, opening an explicit `test_fixtures/outline.pdf`
+  argument — confirms the fix is in the actual shipped package, without installing it (no `sudo`
+  used; the task's own rule).
+- **Real reading pass** (`LINUX_REGRESSION=online flutter test
+  integration_test/linux_regression_test.dart -d linux`, already on `main`, unmodified): all green —
+  `test_fixtures/prose.pdf` opened, text selected, `Ctrl+E` loaded Google in 1138 ms, renderer/GPU
+  child processes showed `Seccomp=2` (the real sandbox, not a silent unsandboxed fallback — the dev
+  override env var was confirmed unset throughout), two in-panel navigations with correct
+  `canGoBack`, Back ×2 landed back at the search page, panel close left `visibleRect` byte-identical
+  before/after. Quit-by-window-close was **not** separately re-verified this session (no
+  `xdotool`/`wmctrl` available to send a real close request here); every manual smoke test in this
+  session exited cleanly on `kill` with no hang, no zombie, no core file, consistent with the D1 fix
+  already verified in the 0.2.0 pass.
+
+### Layer 2 conformance suite (PR #1, `feat/search-web-view-contract`, still open/unmerged)
+
+Per the owner's ordering note, this branch does not touch any `.github/workflows/*` file while that
+PR is open (checked: `gh pr list` showed it `OPEN` throughout this session), and `FLUTTER_VERSION`
+is unchanged anyway since no SDK bump happened.
+
+The conformance suite itself (`integration_test/search_web_view_conformance_test.dart`) only exists
+on that unmerged branch, not on `main`. To verify it against the crash fix without merging unrelated
+work into this branch, it was run from a **separate, temporary `git worktree`** checked out at
+`feat/search-web-view-contract`, with this branch's one-file `main.cc` fix copied in (not committed,
+not merged) — removed afterward (`git worktree remove`); nothing from that branch or this detour
+was committed here.
+
+- **The startup crash was the actual blocker all along.** Previously (that other session) this
+  suite's "Unable to start the app on the device" failure was attributed to an unspecified
+  environment limitation, corroborated by reproducing the same failure on the already-passing
+  `page_field_focus_test.dart`. Re-ran `page_field_focus_test.dart` on this branch, fix applied:
+  **all 4 tests pass.** The GNOME 50 crash was silently aborting the app before it could open a VM
+  service port, for every integration test, not something specific to that suite or this harness.
+- **The conformance suite itself does not reliably complete, for a separate reason**, without the
+  AppArmor profile. Across repeated runs: the first test in the file (`success: start reports both
+  onUrlChanged and onLoadEnd`) consistently passes — the real sandboxed CEF engine started and ran,
+  with **no AppArmor profile installed on this machine at all** (confirmed:
+  `DNDREADER_ALLOW_UNSANDBOXED_DEV` was unset, so this was not a silent unsandboxed fallback; why
+  the sandbox nonetheless started despite `kernel.apparmor_restrict_unprivileged_userns=1` being
+  active was not resolved — this automated shell environment may have different privilege
+  characteristics than the owner's own interactive desktop session, so this should not be read as
+  "the profile is never needed"). The **second** test to create its own `SearchWebView.create()`
+  (a second `CefSearchWebView`, after the first's `dispose()` called `WebviewManager().quit()`)
+  consistently kills the whole app process before completing, taking every remaining test down with
+  it ("did not complete", not a reported assertion failure). A single test run in isolation
+  (`--plain-name "an unresolvable host"`, the only CEF instance in that process) also failed to
+  complete, so the cause is not cleanly isolated to "re-init after quit" alone — flagged, not fixed,
+  since that suite's architecture belongs to the other, still-open PR. **This was not a
+  `SearchUnavailableException`/"no profile" failure** (the first test proves the sandbox itself can
+  start here) — it is an app-process-level crash of some kind, a finding for that PR, not this one.
+- **Not verified**: the suite run with the AppArmor dev profile actually installed
+  (`sudo packaging/linux/dev/install-dev-apparmor.sh build/linux/x64/debug/bundle` — surfaced for
+  the owner, not run; this agent does not run `sudo`). Whether the profile changes the test-2-onward
+  crash is unknown.
+
+### `.deb` rebuild (0.2.1)
+
+- `flutter build linux --release` → `flutter build linux --debug` (for the confirmance-suite
+  attempt above) both succeeded, unchanged webview_cef fork build.
+- `bash packaging/linux/build-deb.sh` → `dist/dndreader_0.2.1-1_amd64.deb`, 341,593,482 bytes
+  (≈326 MiB), sha256 `6a7a30220a10f07ea07498028c48b5255d318e919fa42159fababb4edf99ee9a`.
+- **`Depends:` re-derived (ldd → dpkg -S) and diffed against the 0.2.0 package byte-for-byte: zero
+  differences**, all 89 entries identical. Expected: the dependency surface is driven by the bundled
+  shared libraries, and this fix touches only the Linux runner's `main()`, nothing CEF/GTK-version
+  related.
+- Owner checklist: `docs/linux-0.2.1-release-checklist.md`.
+
+### Toolchain (step 3) — not applicable
+
+No Flutter SDK change was made or needed (see root-cause section). `flutter analyze`, `dart format
+--set-exit-if-changed .`, and all 173 unit tests (this branch is off `main`, pre-dating the Layer 1
+conformance suite on the other PR) are green on Flutter 3.47.7, unchanged. `FLUTTER_VERSION` in the
+three workflow files is untouched, both because no upgrade happened and because PR #1 (which adds
+`ci.yml`/`linux.yml`) is still open.
+
+### Not verified
+
+Windows (this bug cannot occur there — WebView2/GTK are unrelated — and the task excludes touching
+any Windows path); a desktop with no `org.freedesktop.portal.Settings` implementation running at all
+(this machine has one; the fallback-to-fallback behaviour in that case is unread); a real installed
+(`apt install`), AppArmor-registered 0.2.1 package end-to-end (verified the extracted binary and an
+unpackaged release build instead, per the no-`sudo` rule); clean quit via a real window-manager close
+request (no `xdotool`/`wmctrl` here); the Layer 2 conformance suite with the AppArmor dev profile
+installed.
+
+## Narrow the GNOME 50 workaround, fix the AppArmor ABI pin, make Linux conformance runnable (2026-10-16, Ubuntu, branch `fix/gnome50-xsettings-crash`)
+
+Follows the 0.2.1 entry above. PR #1 (`feat/search-web-view-contract`) merged to `main` between
+sessions; this branch was rebased onto it (merge commit `73c6755`) before starting, since the task
+assumed its conformance suite and contract doc already existed.
+
+**1. GTK_USE_PORTAL narrowed from unconditional to conditional.** `linux/runner/main.cc` now looks
+up `org.gnome.settings-daemon.plugins.xsettings` via `g_settings_schema_source_get_default()` and
+only sets the variable when that schema exists but lacks the `antialiasing` key — the exact broken
+condition, not a proxy for it. Deliberately does **not** also gate on the Wayland-vs-X11 backend
+(the comment in `main.cc` explains why: reliably replicating GDK's own backend selection could not
+be verified against GTK's source here, and under-applying the fix would silently bring the crash
+back, which is worse than over-applying it on an X11 session that happens to share the broken
+schema). **Verified**, both branches: a standalone one-off unit of the predicate (`gio-2.0`,
+compiled outside the Flutter build) against the real system schema (TRUE) and a `GSETTINGS_SCHEMA_DIR`
+fixture schema that still has the key (FALSE); a temporary `fprintf` after the real `setenv()` call
+in the actual app binary, removed before committing, confirming the same on both branches end to
+end; the app still starts on this machine with no env var set by hand.
+
+**2. AppArmor ABI pin: `abi/5.0` → `abi/4.0`.** **Verified** directly in the already-existing CI
+run from PR #1 (`gh run view 38612623691 --log`, the `linux` job's "Install the dev AppArmor
+profile" and "Layer 2 conformance" steps): `apparmor_parser` refused the profile with `Could not
+open 'abi/5.0': No such file or directory`, so every test needing the sandbox failed closed with
+`SearchUnavailableException`. `userns` rules were introduced in AppArmor's abi/4.0 — read: Ubuntu's
+own 24.04 release notes document a profile declaring exactly `abi <abi/4.0>,` for this exact
+restriction — and nothing this profile does needs anything from 5.0 (checked: `userns_create`
+mediation is present in both 4.0 and 5.0 on this machine; 5.0 only adds unrelated classes —
+`io_uring`, extended capabilities, a more detailed `userns_create` grammar — this profile uses
+none of). Repinned both `packaging/linux/apparmor/dndreader` and
+`packaging/linux/dev/install-dev-apparmor.sh`'s generated profile, and the illustrative snippet in
+`docs/implementation-plan.md`. **Verified**: `apparmor_parser -Q -K` (parses/validates, skips only
+the root-requiring kernel-load step) accepts both on this machine, which has abi/4.0. Actually
+*loading* it needs root or a real CI run — not done here; see below.
+
+**3. Layer 2 conformance restructured to share one engine across the file.** The suite's per-test
+`SearchWebView.create()` design passed 12/12 on Windows but killed the app on Linux as soon as a
+*second* real engine was created in the same process (CEF: one `start()`/`dispose()` cycle per
+process). Restructured so one engine starts once (`setUpAll`) and every test drives further
+navigation on it; the lifecycle tests (dispose before/after start, no callback after dispose) run
+last, against that same instance, since disposing it ends its life. Nothing dropped or weakened —
+the same checks run, just sequenced differently — and this is not Linux-specific special-casing:
+sharing one engine for a whole run is what `SearchSession` already does in production, so it is a
+more representative test on both platforms, not a narrower one; no `Platform.is*` branching was
+added. `test/search/search_web_view_conformance.dart` gained
+`runSearchWebViewConformanceOnSharedEngine` alongside the unchanged, still-`createFn`-based
+`runSearchWebViewConformance` (kept exactly as-is for Layer 1/`FakeSearchWebView`, which has no such
+constraint).
+
+Found and fixed, in passing: `CefSearchWebView.dispose()` was not idempotent (`_cefStarted` never
+reset, so a second `dispose()` call ran `WebviewManager().quit()` a second time) — small, obviously
+correct, fixed in `search_web_view_desktop.dart`. **Did not fix**, because it needs more than a
+small patch: even a single real `WebviewManager().quit()` leaves the process unable to reliably
+keep running Dart/test code afterward. Reproduced identically before and after the idempotency fix,
+both in the full 11-test suite and in a minimal two-test isolation (`--name` filtering to just the
+two lifecycle tests, nothing else): the final assertion ("no callback fires after dispose")
+reproducibly fails to *complete* — no Dart exception, no native stderr captured in `--verbose`
+output, "did not complete" rather than a reported failure — consistent with an async/native
+teardown race inside the pinned `webview_cef` fork or CEF itself. Documented in
+`docs/search-web-view-contract.md`'s "Known adapter non-conformance" section and inline on the test
+itself; not silently dropped.
+
+**Verified**, running the restructured suite on this machine (`flutter build linux --debug` then
+`flutter test integration_test/search_web_view_conformance_test.dart -d linux`), **with no AppArmor
+profile installed at all**: 10 of 12 checks pass cleanly in one process (every bespoke scenario,
+load-end-forwarded, recovery-via-navigation, releaseFocus, dispose-before-start, and
+dispose-after-start-is-idempotent). The sandbox started without a profile here, same caveat as the
+0.2.1 entry above — not evidence the profile is unneeded on a normal desktop session, and this
+agent did not run `sudo` to test with one installed; the owner's command, surfaced but not run:
+```
+flutter build linux --debug
+sudo packaging/linux/dev/install-dev-apparmor.sh build/linux/x64/debug/bundle
+xvfb-run -a flutter test integration_test/search_web_view_conformance_test.dart -d linux
+```
+`SearchUnavailableException` was **not** the failure mode in any run this session — the sandbox
+started every time it was tried; the one known-unreliable assertion is a process-completion
+problem, not a "no profile" one. Given that, `linux.yml`'s Layer 2 step should **stay
+`continue-on-error: true`** — the suite does not yet reach a clean pass on Linux, for a reason
+outside this branch's reach (the pinned third-party plugin's shutdown behaviour).
+
+**Windows**: not run (no Windows access this session). The restructuring changes Layer 2's
+behaviour there too (shared engine instead of one per test) — the task's own account says the old,
+per-test-fresh design passed 12/12 on `WebView2`, and `WebView2SearchWebView` has no documented
+issue with being reused across navigations (unlike CEF's one-process-one-engine limit), so this is
+expected to keep passing, but it is **not verified** — left to a real Windows CI run.
+
+**0.2.2 built.** `flutter build linux --release` → `bash packaging/linux/build-deb.sh` →
+`dist/dndreader_0.2.2-1_amd64.deb`, 341,562,916 bytes, sha256
+`b759d3c01e5c55887262ef94c8719caca60c89852272c16f3788a0aa62ba2de5`. `Depends:` re-derived; visually
+identical to the 89-entry list recorded for 0.2.1 above (no 0.2.1 `.deb` persisted on this machine
+to diff byte-for-byte against, but neither change here touches a linked library, and the derivation
+command and inputs are the same). **Verified**: the binary extracted from this `.deb` (no install)
+starts cleanly with an explicit `test_fixtures/outline.pdf` argument, and the packaged AppArmor
+profile parses with `apparmor_parser -Q -K`. Checklist: `docs/linux-0.2.2-release-checklist.md` —
+flags, unlike 0.2.1, that the profile conffile's *content* changed this time, so an owner upgrading
+must take the new version if `dpkg` asks, not keep the old one.
+
+### Follow-up after the 0.2.2 CI run: `@{exec_path}` was never declared
+
+The `abi/5.0` → `abi/4.0` repin above was necessary but **not sufficient**. CI on `ubuntu-latest`
+(PR #2, run 38864214638) got past the missing-ABI error and failed on the next one:
+
+```
+Found reference to variable exec_path, but is never declared
+```
+
+Both profile sources referenced `@{exec_path}` without declaring it. AppArmor **4.x** — what Ubuntu
+24.04 ships — rejects that outright; the **5.0.2** parser on this machine accepts it, and nothing in
+`/etc/apparmor.d/tunables/` declares the variable (checked), so `apparmor_parser -Q -K` run locally
+**cannot catch this class of defect**. The consequence on 24.04 was unchanged from the `abi/5.0`
+bug: profile refused, sandbox unable to start, in-app search silently unavailable.
+
+Declared in both `packaging/linux/apparmor/dndreader` and the profile written by
+`packaging/linux/dev/install-dev-apparmor.sh`, and used as the profile attachment as well, which is
+Ubuntu's own pattern. **Verified**: both parse with `apparmor_parser -Q -K` here (5.0.2); the
+rendered dev profile was generated from the script's own heredoc and parsed the same way. **Not
+verified locally** — the 4.x parser, which is the whole point; that is left to the CI run.
+
+**Verified on the installed 0.2.2 package** (owner's machine, GNOME 50.1,
+`kernel.apparmor_restrict_unprivileged_userns=1`): upgrade from 0.2.0-1 took the new conffile, the
+app launches (the GNOME 50 abort is gone), `aa-status` shows the profile loaded, the search panel
+loaded results, and `packaging/linux/verify-sandbox.sh` reported **3 renderers, `seccomp=2`, each in
+its own user namespace — PASS**. This is the first installed build on which the sandbox has been
+confirmed active end to end.

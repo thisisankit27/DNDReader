@@ -11,6 +11,8 @@
 | [`windows-owner-test.md`](windows-owner-test.md) | What to install and test on Windows | Current |
 | [`search-web-view-contract.md`](search-web-view-contract.md) | The `SearchWebView` adapter contract: what a CEF/WebView2/future adapter must do | Current |
 | [`linux-0.2.0-release-checklist.md`](linux-0.2.0-release-checklist.md) | Post-install checks for the `.deb` | Done (owner-confirmed) |
+| [`linux-0.2.1-release-checklist.md`](linux-0.2.1-release-checklist.md) | Post-install checks for the 0.2.1 GNOME 50 crash fix | Needs the owner's install |
+| [`linux-0.2.2-release-checklist.md`](linux-0.2.2-release-checklist.md) | Post-install checks for 0.2.2 (narrower workaround, AppArmor ABI fix) | Needs the owner's install |
 
 Rule for new evidence: the repository is public — do not commit screenshots, machine names, user names or
 personal paths; describe observations in text.
