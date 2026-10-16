@@ -48,7 +48,11 @@ cat >"$tmp" <<PROFILE
 abi <abi/4.0>,
 include <tunables/global>
 
-profile $profile "$exe" flags=(unconfined) {
+# Declared for the same reason as in the shipped profile: AppArmor 4.x rejects an
+# undeclared @{exec_path}, and 4.x is what Ubuntu 24.04 ships.
+@{exec_path} = "$exe"
+
+profile $profile @{exec_path} flags=(unconfined) {
   userns,
   @{exec_path} mr,
 }

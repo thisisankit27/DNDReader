@@ -22,7 +22,13 @@
 abi <abi/4.0>,
 include <tunables/global>
 
-profile dndreader /usr/lib/dndreader/dndreader flags=(unconfined) {
+# Declared, not assumed: a profile that references @{exec_path} without declaring it is
+# rejected outright by AppArmor 4.x ("Found reference to variable exec_path, but is never
+# declared"), which is what Ubuntu 24.04 ships. The 5.x parser on 26.04 tolerates the
+# omission, so local validation cannot catch this — it was caught by CI on 24.04.
+@{exec_path} = /usr/lib/dndreader/dndreader
+
+profile dndreader @{exec_path} flags=(unconfined) {
   userns,
   @{exec_path} mr,
 

@@ -1776,3 +1776,31 @@ starts cleanly with an explicit `test_fixtures/outline.pdf` argument, and the pa
 profile parses with `apparmor_parser -Q -K`. Checklist: `docs/linux-0.2.2-release-checklist.md` —
 flags, unlike 0.2.1, that the profile conffile's *content* changed this time, so an owner upgrading
 must take the new version if `dpkg` asks, not keep the old one.
+
+### Follow-up after the 0.2.2 CI run: `@{exec_path}` was never declared
+
+The `abi/5.0` → `abi/4.0` repin above was necessary but **not sufficient**. CI on `ubuntu-latest`
+(PR #2, run 38864214638) got past the missing-ABI error and failed on the next one:
+
+```
+Found reference to variable exec_path, but is never declared
+```
+
+Both profile sources referenced `@{exec_path}` without declaring it. AppArmor **4.x** — what Ubuntu
+24.04 ships — rejects that outright; the **5.0.2** parser on this machine accepts it, and nothing in
+`/etc/apparmor.d/tunables/` declares the variable (checked), so `apparmor_parser -Q -K` run locally
+**cannot catch this class of defect**. The consequence on 24.04 was unchanged from the `abi/5.0`
+bug: profile refused, sandbox unable to start, in-app search silently unavailable.
+
+Declared in both `packaging/linux/apparmor/dndreader` and the profile written by
+`packaging/linux/dev/install-dev-apparmor.sh`, and used as the profile attachment as well, which is
+Ubuntu's own pattern. **Verified**: both parse with `apparmor_parser -Q -K` here (5.0.2); the
+rendered dev profile was generated from the script's own heredoc and parsed the same way. **Not
+verified locally** — the 4.x parser, which is the whole point; that is left to the CI run.
+
+**Verified on the installed 0.2.2 package** (owner's machine, GNOME 50.1,
+`kernel.apparmor_restrict_unprivileged_userns=1`): upgrade from 0.2.0-1 took the new conffile, the
+app launches (the GNOME 50 abort is gone), `aa-status` shows the profile loaded, the search panel
+loaded results, and `packaging/linux/verify-sandbox.sh` reported **3 renderers, `seccomp=2`, each in
+its own user namespace — PASS**. This is the first installed build on which the sandbox has been
+confirmed active end to end.
