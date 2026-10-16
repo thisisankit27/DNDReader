@@ -200,3 +200,19 @@ ever reported for the second navigation, so `SearchSession` has no error to reac
 out the full load timeout and shows a false failure for a page that did load. This violates clause 3
 of the failed-load-end rule (a new navigation must clear the pending suppression) and is exercised by
 a dedicated Layer 2 conformance scenario; see that suite's report for whether it was reproduced.
+
+`CefSearchWebView.dispose()` is not idempotent as written: `_cefStarted` is set once in `start()` and
+never reset, so a second `dispose()` call runs `WebviewManager().quit()` a second time. Fixed (small,
+obviously correct, demonstrated on Linux): `dispose()` now clears `_cefStarted` before quitting, so a
+second call is a no-op. Separately, and **not fixed**: even a single real `WebviewManager().quit()`
+leaves the process unable to reliably keep running Dart/test code afterward — the Layer 2
+conformance suite's final assertion (`no callback fires after dispose`) reproducibly fails to
+*complete* (no Dart exception, no native stderr, "did not complete" rather than a reported
+assertion) both at the end of the full suite and in a minimal two-test isolation, identically before
+and after the `_cefStarted` fix. This looks like an async/native teardown race inside the pinned
+`webview_cef` fork or CEF itself, surfaced only because the conformance suite now reuses one engine
+for a whole process instead of one per test (see `integration_test/search_web_view_conformance_test.dart`);
+production code never continues running after disposing its webview (it is always the last thing
+`SearchSession.dispose()` does before the app itself exits), so this has no known user-facing
+consequence, but it is also not something a small patch here can responsibly fix. Tracked, not
+fixed.

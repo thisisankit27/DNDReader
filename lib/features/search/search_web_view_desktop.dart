@@ -124,7 +124,15 @@ class CefSearchWebView implements SearchWebView {
     _controller?.dispose();
     _controller = null;
     // Never initialised (fail-closed start): there is nothing to quit, and
-    // WebviewManager.quit() asserts that it was initialised.
-    if (_cefStarted) WebviewManager().quit();
+    // WebviewManager.quit() asserts that it was initialised. Only quit once:
+    // a second dispose() call must be a no-op (the contract requires dispose
+    // to be idempotent), and WebviewManager.quit() is not safe to call twice
+    // — verified: it crashed the whole process when the Layer 2 conformance
+    // suite's "dispose after start is idempotent" test called dispose() a
+    // second time, before this flag was reset here.
+    if (_cefStarted) {
+      _cefStarted = false;
+      WebviewManager().quit();
+    }
   }
 }

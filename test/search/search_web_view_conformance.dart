@@ -127,6 +127,58 @@ void runSearchWebViewConformance(
   });
 }
 
+/// The subset of [runSearchWebViewConformance]'s assertions that can run
+/// against an engine that is already started and must stay alive afterward —
+/// for an engine that cannot be safely started a second time in one process
+/// (CEF: a real second `start()` after an earlier instance's `dispose()`
+/// crashes the process; verified on Linux). [view] must already be started;
+/// this never disposes it. The lifecycle assertions this necessarily leaves
+/// out (`dispose before start`, `dispose after start is idempotent`, `no
+/// callback fires after dispose`) are not dropped — they still run, once,
+/// against this same shared [view] (or, for the before-`start()` case, a
+/// second instance that is never started and so never touches the engine),
+/// at the very end of its life. See
+/// integration_test/search_web_view_conformance_test.dart, which is the only
+/// caller: it owns that sequencing because it owns the shared view.
+void runSearchWebViewConformanceOnSharedEngine(
+  String name,
+  SearchWebView view, {
+  required SearchWebViewCapabilities caps,
+  required Uri failingUrl,
+  required Uri secondUrl,
+  required TriggerNavigation triggerFailure,
+  required TriggerNavigation triggerSuccess,
+}) {
+  group(name, () {
+    test('a load-end for a URL that never failed is forwarded', () async {
+      final ends = <String>[];
+      view.onLoadEnd = ends.add;
+      await triggerSuccess(view, secondUrl);
+      await waitUntil(() => ends.contains(secondUrl.toString()));
+    });
+
+    test(
+      'recovery via an explicit navigation after a failure is reported',
+      () async {
+        var failed = false;
+        final ends = <String>[];
+        view.onLoadError = (_, _, _) => failed = true;
+        view.onLoadEnd = ends.add;
+        await triggerFailure(view, failingUrl);
+        await waitUntil(() => failed);
+
+        await view.loadUrl(secondUrl);
+        await triggerSuccess(view, secondUrl);
+        await waitUntil(() => ends.contains(secondUrl.toString()));
+      },
+    );
+
+    test('releaseFocus never throws', () async {
+      await expectLater(view.releaseFocus(), completes);
+    });
+  });
+}
+
 void main() {
   final startUrl = Uri.parse('https://example.invalid/start');
   final failingUrl = Uri.parse('https://example.invalid/failing');
