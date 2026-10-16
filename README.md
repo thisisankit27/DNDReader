@@ -117,6 +117,14 @@ namespace that sandbox needs, so the package installs `/etc/apparmor.d/dndreader
 the sandbox cannot start, the app does not fall back to an unsandboxed browser**: the panel shows
 "Search unavailable" and offers *Open in browser*.
 
+The profile declares `abi <abi/4.0>,` — AppArmor's `userns` rule exists from abi/4.0 onward, which is
+what Ubuntu ships starting with 24.04, the same release that introduced the restriction this profile
+is for. A working sandbox therefore needs Ubuntu 24.04 or later (older Ubuntu doesn't need this
+profile at all: the restriction it works around doesn't exist there, so the sandbox just starts
+unconfined). A system with an `abi/4.0` file missing or an AppArmor build older than that will fail
+to load the profile (`apparmor_parser` refuses it outright) and search will be unavailable for the
+same fail-closed reason.
+
 - Running a development build from the source tree is therefore unsandboxed-unavailable by default.
   Either install the profile for your build directory (root; read the script first):
   `sudo packaging/linux/dev/install-dev-apparmor.sh`, or, **debug builds only**, set

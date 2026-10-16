@@ -457,7 +457,7 @@ that grants `userns` — exactly what Ubuntu ships for Chrome, Chromium, Signal,
 
 ```
 # /etc/apparmor.d/dndreader — profile bound to the installed binary
-abi <abi/5.0>,
+abi <abi/4.0>,
 include <tunables/global>
 
 profile dndreader /usr/lib/dndreader/dndreader flags=(unconfined) {
@@ -466,6 +466,14 @@ profile dndreader /usr/lib/dndreader/dndreader flags=(unconfined) {
   include if exists <local/dndreader>
 }
 ```
+
+`abi/4.0`, not a newer one: `userns` rules were introduced in AppArmor's abi/4.0 (shipped with Ubuntu
+24.04, the oldest Ubuntu this restriction applies to), and nothing else this minimal profile does
+needs anything newer. Pinning to a newer abi than that buys nothing here and costs compatibility with
+any system — including, in practice, GitHub's `ubuntu-latest` CI runner — that doesn't have that
+newer abi file installed; `abi <abi/5.0>,` found exactly that failure mode (`apparmor_parser`
+refusing the profile outright, sandbox unavailable, verified in CI) before this document was
+corrected to match the fix.
 
 `postinst` loads it (`apparmor_parser -r`; guarded and non-fatal, because the app fails closed);
 `postrm` unloads and removes it. Chromium re-execs the same binary for its helper processes, so they
