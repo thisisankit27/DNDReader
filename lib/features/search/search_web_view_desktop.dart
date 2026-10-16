@@ -36,6 +36,14 @@ class CefSearchWebView implements SearchWebView {
     void Function(String url, String errorText, int errorCode)? callback,
   ) => _onLoadError = callback;
 
+  // CEF is not asked for its history state (above), and its own focus is
+  // handled by Flutter's focus tree (releaseFocus below).
+  @override
+  SearchWebViewCapabilities get capabilities => const SearchWebViewCapabilities(
+    reportsHistory: false,
+    releaseFocusIsNoop: true,
+  );
+
   @override
   Future<void> start(Uri initialUrl) async {
     final unsandboxed = unsandboxedDevOverrideActive;

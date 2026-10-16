@@ -1449,3 +1449,82 @@ rewrote the 20 commits that carried a personal e-mail address in their metadata 
 no-reply identity, and dropped the screenshots from history, so neither enters `main`; refreshed stale status
 text (README Windows row, both plans, completion report banner); deleted the consumed hand-over prompts and raw run logs under `docs/windows-verification/` (their findings live in `REPORT.md`); added `docs/README.md` (index) and
 `docs/windows-owner-test.md`; added `main` to the CI triggers.
+
+## SearchWebView contract, conformance suite, and CI split (2026-10-14, Ubuntu, branch `feat/search-web-view-contract`)
+
+Turns the D3-class regression (CEF's spurious trailing load-end after a failure, fixed by
+`FailedLoadEndFilter`, §9) into something a test catches instead of a human running the app
+offline. Three pieces: `docs/search-web-view-contract.md` (the adapter contract, including
+`SearchWebViewCapabilities`), a two-layer conformance suite, and a three-way CI split
+(`ci.yml` / `linux.yml` / `windows.yml`, replacing the single `windows.yml`). No application
+behaviour changed.
+
+**`FakeSearchWebView` needed correcting.** It was a stateless passthrough — unlike both real
+adapters, it had no `FailedLoadEndFilter`-equivalent, so `emitLoadError` followed by `emitLoadEnd`
+for the same URL was always forwarded. Every session/panel test built on it was implicitly
+assuming adapter-level filtering the fake never did. **Two existing tests in
+`search_session_test.dart` relied on this gap** — both called `emitLoadError` then a single
+`emitLoadEnd` for the same URL with no intervening navigation, which a contract-correct fake now
+suppresses as the engine's own trailing noise: `'an aborted challenge navigation...'` and (renamed)
+`'a genuine second load-end after a failure recovers from it'`. Both were rewritten as two emits
+(first suppressed, second genuine); a new sibling test, `'Retry after a failure recovers via an
+explicit navigation'`, covers the path actually verified on the real Linux app (§9: "Retry succeeds
+once the server is up"). The contract document states plainly that the session's "recovers from
+failed" rule is a defensive guarantee, not a path either shipped adapter is known to exercise in
+production — nothing on record (§9's `gated` observations, D3) shows a bare post-failure load-end
+reaching the session on either adapter; the real Cloudflare case is handled entirely by the
+ambiguous-error grace timer, a different code path.
+
+**A real WebView2 non-conformance was found while writing the contract, not blind-fixed:**
+`Webview2SearchWebView._navigationFailed` is a bare boolean, cleared only by the next
+`NavigationCompleted` rather than by `loadUrl`/`goBack`/`reload` (unlike CEF's explicit
+`navigationStarted()`). A navigation superseded by a newer one before it errors or completes sets
+the flag and nothing clears it, so the *newer* navigation's own completion risks being swallowed —
+the session would then wait out its full 20 s timeout and show a false failure for a page that did
+load. `integration_test/search_web_view_conformance_test.dart` has a dedicated scenario for this
+(a navigation deliberately left in flight against a `/slow` endpoint that never responds, then
+immediately superseded). **Not verified either way** — no Windows access in this session; left for
+the `windows.yml` CI run or the owner.
+
+**Layer 1** (`test/search/search_web_view_conformance.dart`, runs in `flutter test`): dispose
+idempotency, no callbacks after dispose, forwarding for a URL that never failed, recovery via an
+explicit navigation, `releaseFocus` never throwing — run against `FakeSearchWebView`, plus
+fake-specific tests proving the corrected fake (not just `FailedLoadEndFilter` in isolation) obeys
+the failed-load-end rule. **Verified:** `dart format`, `flutter analyze`, `flutter test` all clean;
+174 tests (was 173; +1 net after the rewrite/addition in `search_session_test.dart` and the 9 new
+conformance tests, minus none removed).
+
+**Layer 2** (`integration_test/search_web_view_conformance_test.dart`): the same contract against
+`SearchWebView.create()` on a real device, serving pages from a local `HttpServer` on `127.0.0.1`
+(no search engine, no scraping). **Not verified in this session**: this execution environment could
+not start the `integration_test` harness at all on `-d linux` — "Error waiting for a debug
+connection: the log reader stopped unexpectedly, or never started" — confirmed to be a pre-existing
+environment limitation, not specific to this change, by reproducing the identical failure on the
+already-passing `integration_test/page_field_focus_test.dart`. Separately and additionally
+unverified: whether the real sandboxed CEF engine starts at all under this harness, which needs
+`sudo packaging/linux/dev/install-dev-apparmor.sh build/linux/x64/debug/bundle` first (this agent
+does not run `sudo`; the debug build was produced — `flutter build linux --debug` — but the profile
+was not installed). Both questions are left to the owner, locally, or to `linux.yml` in CI:
+```
+flutter build linux --debug
+sudo packaging/linux/dev/install-dev-apparmor.sh build/linux/x64/debug/bundle
+xvfb-run -a flutter test integration_test/search_web_view_conformance_test.dart -d linux
+```
+
+**CI split:** `ci.yml` (format/analyze/test, the `pubspec_overrides.yaml` and pinned-git-ref guards,
+moved out of the Windows-named workflow); `linux.yml` (new — release build, then the sequence
+above under `xvfb-run`, with the AppArmor-install and conformance steps marked
+`continue-on-error` since neither has been observed pass or fail on a hosted runner yet);
+`windows.yml` (trimmed to `build_windows` plus a new Layer 2 conformance step,
+`continue-on-error`, after the existing bundle build/assert/upload — not yet observed either).
+All three trigger on `push` to `main`, `pull_request`, and `workflow_dispatch`; the stale
+`feat/windows-port`/`feat/w*` branch filters are dropped. Checked before dropping the old
+`analyze_test` job name: `main` has no branch protection configured (`gh api
+repos/.../branches/main/protection` → 404), so no PR can be stranded on a required check that no
+longer exists.
+
+**Not verified:** everything that needs a real CI run or the owner's machine — the Linux sandboxed
+conformance pass, the Windows conformance pass, and whether the WebView2 `_navigationFailed`
+scenario reproduces. The macOS CEF path has no CI runner in this split (none existed before this
+change either). The M7 mobile adapter doesn't exist yet, so `_UnsupportedSearchWebView`'s
+capability values are unexercised by design.
