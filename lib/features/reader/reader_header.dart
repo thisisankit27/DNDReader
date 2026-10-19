@@ -23,6 +23,7 @@ class ReaderHeader extends StatelessWidget {
     this.onToggleContents,
     this.contentsOpen = false,
     this.menu,
+    this.phone = false,
   });
 
   final String title;
@@ -51,6 +52,9 @@ class ReaderHeader extends StatelessWidget {
 
   /// Trailing overflow menu.
   final Widget? menu;
+
+  /// Phone layout: rotate and full screen are in the menu, which leaves room for the title.
+  final bool phone;
 
   static const double height = 52;
 
@@ -86,7 +90,7 @@ class ReaderHeader extends StatelessWidget {
                   child: Row(
                     children: [
                       IconButton(
-                        tooltip: 'Contents (Ctrl+T)',
+                        tooltip: phone ? 'Contents' : 'Contents (Ctrl+T)',
                         isSelected: contentsOpen,
                         icon: const Icon(Icons.toc),
                         onPressed: hasDocument ? onToggleContents : null,
@@ -109,6 +113,7 @@ class ReaderHeader extends StatelessWidget {
                           pageCount: pageCount!,
                           onGoToPage: onGoToPage,
                           onDone: onPageEditDone,
+                          labelField: phone,
                         ),
                       ],
                       const SizedBox(width: 8),
@@ -122,24 +127,28 @@ class ReaderHeader extends StatelessWidget {
                         icon: const Icon(Icons.add),
                         onPressed: hasDocument ? onZoomIn : null,
                       ),
-                      IconButton(
-                        tooltip: 'Rotate clockwise (Ctrl+R)',
-                        icon: const Icon(Icons.rotate_right),
-                        onPressed: hasDocument ? onRotate : null,
-                      ),
-                      IconButton(
-                        tooltip: fullscreen
-                            ? 'Exit full screen (F11)'
-                            : 'Full screen (F11)',
-                        icon: Icon(
-                          fullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                      if (!phone) ...[
+                        IconButton(
+                          tooltip: 'Rotate clockwise (Ctrl+R)',
+                          icon: const Icon(Icons.rotate_right),
+                          onPressed: hasDocument ? onRotate : null,
                         ),
-                        onPressed: onToggleFullscreen,
-                      ),
+                        IconButton(
+                          tooltip: fullscreen
+                              ? 'Exit full screen (F11)'
+                              : 'Full screen (F11)',
+                          icon: Icon(
+                            fullscreen
+                                ? Icons.fullscreen_exit
+                                : Icons.fullscreen,
+                          ),
+                          onPressed: onToggleFullscreen,
+                        ),
+                      ],
                       const SizedBox(width: 4),
                       if (compact)
                         IconButton.filledTonal(
-                          tooltip: 'Open PDF (Ctrl+O)',
+                          tooltip: phone ? 'Open PDF' : 'Open PDF (Ctrl+O)',
                           icon: const Icon(Icons.folder_open_outlined),
                           onPressed: onOpen,
                         )
@@ -172,7 +181,12 @@ class PageField extends StatefulWidget {
     required this.pageCount,
     this.onGoToPage,
     this.onDone,
+    this.labelField = false,
   });
+
+  /// Names the field itself for a screen reader ("Page number, of N", then its value), instead of a
+  /// label on the row around it, which reads the number and the label as two separate things.
+  final bool labelField;
 
   final int? pageNumber;
   final int pageCount;
@@ -233,54 +247,74 @@ class _PageFieldState extends State<PageField> {
     final theme = Theme.of(context);
     final style = theme.textTheme.labelLarge;
     return Semantics(
-      label: 'Page number, of ${widget.pageCount}',
-      textField: true,
+      label: widget.labelField ? null : 'Page number, of ${widget.pageCount}',
+      textField: !widget.labelField,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
-            width: 52,
-            height: 34,
-            child: Focus(
-              onKeyEvent: (node, event) {
-                if (event is KeyDownEvent &&
-                    event.logicalKey == LogicalKeyboardKey.escape) {
-                  _text.text = _shown;
-                  _finish();
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
-              child: TextField(
-                key: const ValueKey('page-field'),
-                controller: _text,
-                focusNode: _focus,
-                textAlign: TextAlign.center,
-                style: style,
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(6),
-                ],
-                onSubmitted: _submit,
-                onTapOutside: (_) {
-                  if (_focus.hasFocus) _finish();
+          _FieldLabel(
+            label: widget.labelField
+                ? 'Page number, of ${widget.pageCount}'
+                : null,
+            child: SizedBox(
+              width: 52,
+              height: 34,
+              child: Focus(
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent &&
+                      event.logicalKey == LogicalKeyboardKey.escape) {
+                    _text.text = _shown;
+                    _finish();
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
                 },
-                decoration: const InputDecoration(
-                  isDense: true,
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 8,
+                child: TextField(
+                  key: const ValueKey('page-field'),
+                  controller: _text,
+                  focusNode: _focus,
+                  textAlign: TextAlign.center,
+                  style: style,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ],
+                  onSubmitted: _submit,
+                  onTapOutside: (_) {
+                    if (_focus.hasFocus) _finish();
+                  },
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 8,
+                    ),
+                    border: OutlineInputBorder(),
                   ),
-                  border: OutlineInputBorder(),
                 ),
               ),
             ),
           ),
           const SizedBox(width: 6),
-          Text('/ ${widget.pageCount}', style: style),
+          ExcludeSemantics(
+            excluding: widget.labelField,
+            child: Text('/ ${widget.pageCount}', style: style),
+          ),
         ],
       ),
     );
   }
+}
+
+/// Names [child] for a screen reader when [label] is given; otherwise it is [child] unchanged.
+class _FieldLabel extends StatelessWidget {
+  const _FieldLabel({required this.label, required this.child});
+
+  final String? label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      label == null ? child : Semantics(label: label, child: child);
 }

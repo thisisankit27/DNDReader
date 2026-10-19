@@ -49,6 +49,8 @@ class _DndReaderAppState extends State<DndReaderApp> {
       listenable: _settings,
       builder: (context, _) => MaterialApp(
         title: 'DNDReader',
+        // Lets Android restore the panel after the process was killed in the background.
+        restorationScopeId: 'dndreader',
         debugShowCheckedModeBanner: false,
         theme: _withSelection(AppTheme.light()),
         darkTheme: _withSelection(AppTheme.dark()),

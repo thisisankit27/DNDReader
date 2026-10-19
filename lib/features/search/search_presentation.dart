@@ -15,6 +15,9 @@ enum SearchPresentation {
   static SearchPresentation forPlatform() =>
       Platform.isAndroid ? adaptive : sidePanel;
 
+  /// Touch-first mobile layout: phone header, no keyboard hints, system back, keep-awake.
+  bool get touch => this == adaptive;
+
   /// Whether a window [width] dp wide shows the bottom sheet.
   bool usesSheet(double width) => this == adaptive && width < sheetBreakpoint;
 }

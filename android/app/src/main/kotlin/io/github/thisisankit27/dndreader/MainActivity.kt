@@ -7,8 +7,15 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.WebView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
@@ -24,6 +31,7 @@ class MainActivity : FlutterActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private var pendingPick: MethodChannel.Result? = null
+    private var windowChannel: MethodChannel? = null
 
     /** The launch intent was already handled (or belongs to a previous life of this activity). */
     private var launchIntentConsumed = false
@@ -51,6 +59,30 @@ class MainActivity : FlutterActivity() {
                     result.notImplemented()
                 }
             }
+        // Full screen and keep-screen-on, over the same `dndreader/window` channel the desktop runners
+        // answer; WindowService (Dart) is shared and unchanged.
+        val windowCh = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dndreader/window")
+        windowChannel = windowCh
+        windowCh.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "setFullscreen" -> {
+                    val on = call.arguments as? Boolean ?: false
+                    hideSystemBars(on)
+                    windowCh.invokeMethod("fullscreenChanged", on)
+                    result.success(null)
+                }
+                "setKeepScreenOn" -> {
+                    val on = call.arguments as? Boolean ?: false
+                    if (on) {
+                        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    } else {
+                        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
         ch.setMethodCallHandler { call, result ->
             when (call.method) {
                 "pick" -> startPick(result)
@@ -142,6 +174,33 @@ class MainActivity : FlutterActivity() {
             } catch (e: Exception) {
                 main.post { result.error("failed", e.message, null) }
             }
+        }
+    }
+
+    override fun onPostResume() {
+        super.onPostResume()
+        // With a hardware keyboard attached Android draws a green focus ring around the whole Flutter view;
+        // the app draws its own focus indication, so the system one is turned off.
+        findFlutterView(window.decorView)?.defaultFocusHighlightEnabled = false
+    }
+
+    private fun findFlutterView(view: View): FlutterView? {
+        if (view is FlutterView) return view
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) findFlutterView(view.getChildAt(i))?.let { return it }
+        }
+        return null
+    }
+
+    /** Hides (or shows) the status and navigation bars; swiping from an edge reveals them briefly. */
+    private fun hideSystemBars(on: Boolean) {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        if (on) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
         }
     }
 

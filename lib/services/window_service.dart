@@ -30,6 +30,17 @@ class WindowService extends ChangeNotifier {
 
   Future<void> toggleFullscreen() => setFullscreen(!_fullscreen);
 
+  /// Keeps the screen from timing out while a document is open (Android; a no-op elsewhere).
+  Future<void> setKeepScreenOn(bool value) async {
+    try {
+      await _channel.invokeMethod<void>('setKeepScreenOn', value);
+    } on MissingPluginException {
+      // No native window layer here.
+    } on PlatformException {
+      // Not essential.
+    }
+  }
+
   /// The native side reports the real state, including changes the window
   /// manager makes on its own (e.g. a compositor shortcut).
   Future<void> _onCall(MethodCall call) async {

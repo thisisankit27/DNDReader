@@ -105,6 +105,20 @@ class _SearchSheetState extends State<SearchSheet>
     });
   }
 
+  void _snapTo(double target) {
+    _from = _fraction;
+    _to = target;
+    // System "remove animations" (MediaQuery.disableAnimations): jump, do not animate.
+    _settle.duration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 220);
+    unawaited(
+      _settle.forward(from: 0).whenComplete(() {
+        if (mounted) widget.onSettled(target);
+      }),
+    );
+  }
+
   void _release(DragEndDetails d) {
     final target = SearchSheet.snapFor(
       _fraction,
@@ -116,13 +130,7 @@ class _SearchSheetState extends State<SearchSheet>
       setState(() => _fraction = widget.fraction);
       return;
     }
-    _from = _fraction;
-    _to = target;
-    unawaited(
-      _settle.forward(from: 0).whenComplete(() {
-        if (mounted) widget.onSettled(target);
-      }),
-    );
+    _snapTo(target);
   }
 
   @override
@@ -145,7 +153,10 @@ class _SearchSheetState extends State<SearchSheet>
           child: Column(
             children: [
               Semantics(
-                label: 'Drag to resize the search results',
+                label: 'Search results size',
+                // A screen reader cannot drag: it gets increase / decrease actions instead.
+                onIncrease: () => _snapTo(SearchSheet.snapFractions.last),
+                onDecrease: () => _snapTo(SearchSheet.snapFractions.first),
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onVerticalDragUpdate: _drag,
@@ -170,6 +181,7 @@ class _SearchSheetState extends State<SearchSheet>
                 child: SearchPanel(
                   session: widget.session,
                   onClose: widget.onClose,
+                  touch: true,
                 ),
               ),
             ],

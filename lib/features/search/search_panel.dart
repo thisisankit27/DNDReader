@@ -9,10 +9,18 @@ import 'search_web_view.dart';
 /// the embedded browser, with calm states for loading, failure and "the sandbox
 /// cannot start here".
 class SearchPanel extends StatelessWidget {
-  const SearchPanel({super.key, required this.session, required this.onClose});
+  const SearchPanel({
+    super.key,
+    required this.session,
+    required this.onClose,
+    this.touch = false,
+  });
 
   final SearchSession session;
   final VoidCallback onClose;
+
+  /// Touch layout: no keyboard-shortcut text in labels (a screen reader reads them aloud).
+  final bool touch;
 
   /// The explanation under "Search can't run inside DNDReader here".
   ///
@@ -69,7 +77,7 @@ class SearchPanel extends StatelessWidget {
             ),
             child: Column(
               children: [
-                _Header(session: session, onClose: onClose),
+                _Header(session: session, onClose: onClose, touch: touch),
                 if (unsandboxedDevOverrideActive) const _UnsandboxedBanner(),
                 if (session.consentHint) const _ConsentHint(),
                 Expanded(child: _Body(session: session)),
@@ -83,10 +91,15 @@ class SearchPanel extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.session, required this.onClose});
+  const _Header({
+    required this.session,
+    required this.onClose,
+    this.touch = false,
+  });
 
   final SearchSession session;
   final VoidCallback onClose;
+  final bool touch;
 
   @override
   Widget build(BuildContext context) {
@@ -129,7 +142,7 @@ class _Header extends StatelessWidget {
                     onPressed: session.openInBrowser,
                   ),
                   IconButton(
-                    tooltip: 'Close (Esc)',
+                    tooltip: touch ? 'Close' : 'Close (Esc)',
                     icon: const Icon(Icons.close),
                     onPressed: onClose,
                   ),

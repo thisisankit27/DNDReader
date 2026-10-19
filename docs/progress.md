@@ -1841,24 +1841,24 @@ Evidence column is filled at the milestone that settles the row.
 |---|---|---|---|
 | 1 | Open a PDF (picker) | shipped | M3: system picker (ACTION_OPEN_DOCUMENT), copy to private storage; device |
 | 2 | Open from intent: ACTION_VIEW / ACTION_SEND, cold / warm / second | shipped | M3: all five paths observed on the device (debug build) |
-| 3 | Continuous vertical scroll | pending | |
+| 3 | Continuous vertical scroll | shipped | M2/M5: swipe and fling on the device |
 | 4 | Pinch zoom | pending | |
-| 5 | Zoom − / + buttons | pending | |
+| 5 | Zoom − / + buttons | shipped | M5: two taps on + zoomed in; device |
 | 6 | Fit page | pending | |
-| 7 | `page n / N` indicator | pending | |
-| 8 | Editable page-number field | pending | |
-| 9 | Rotate ±90° | pending | |
-| 10 | Scrollbars | pending | |
-| 11 | Outline / table-of-contents panel | pending | |
+| 7 | `page n / N` indicator | shipped | M5: follows scrolling; device |
+| 8 | Editable page-number field | shipped | M5: typed 5 + Enter went to page 5; numeric keypad with ✓; the document did not reflow when the keyboard opened; device |
+| 9 | Rotate ±90° | shipped | M5: menu → Rotate page turned the pages; device. Phone offers clockwise only; counter-clockwise stays Ctrl+Shift+R |
+| 10 | Scrollbars | shipped | right-edge scrollbar visible and moving throughout; device |
+| 11 | Outline / table-of-contents panel | shipped | M5: expandable tree on `outline.pdf`; header button opens/closes it; Back closes it; Ctrl+T through the engine key pipeline; device |
 | 12 | "No selectable text" state | shipped | M3: same as desktop (no pill, nothing selectable; there is no separate message on desktop either); device |
 | 13 | Open-failure state | shipped | M3: 0-byte, non-PDF, truncated, password-protected all reach the existing state; device |
-| 14 | Full screen (immersive) | pending | |
+| 14 | Full screen (immersive) | shipped | M5: menu → Full screen hid the bars; Back leaves it; device |
 | 15 | Touch text selection (long-press word, drag handles, magnifier) | shipped | M2: observed on the G60 (device) |
-| 16 | Debounced `SelectionActionController` + "Find meaning" pill | pending | |
-| 17 | Pill edge flip / clamp (`pill_placement.dart`, reused) | pending | |
-| 18 | Context menu: Copy / Find meaning / Select all | pending | |
+| 16 | Debounced `SelectionActionController` + "Find meaning" pill | shipped | M2/M5; device |
+| 17 | Pill edge flip / clamp (`pill_placement.dart`, reused) | shipped | M5: reused unchanged with a larger `gap` on touch (34 dp, clears the handles); device. Flip above near the bottom edge: pure function tests only, not seen on the device |
+| 18 | Context menu: Copy / Find meaning / Select all | shipped | M2/M5: 48 dp rows, no Ctrl hints on touch; device |
 | 19 | Double-tap to select a word (vs touch double-tap = zoom) | shipped | M2: double-tap selects the word and does not zoom (existing `onGeneralTap`); zoom is pinch + the −/+ buttons |
-| 20 | Five colour-blind-safe highlight colours | pending | |
+| 20 | Five colour-blind-safe highlight colours | shipped | unchanged code (theme-driven, no Material You dynamic colour in the app); sky blue observed in light and dark; the other four were **not** selected on the device |
 | 21 | Search panel: query text, Back, Open in browser, Close | shipped | M4: in the sheet on the device (profile build) |
 | 22 | Panel states: loading / loaded / failed + Retry / unavailable | pending | |
 | 23 | Google cookie-consent hint | pending | |
@@ -1870,20 +1870,20 @@ Evidence column is filled at the milestone that settles the row.
 | 29 | Memory: last document and page | shipped | M3: force-stop and relaunch restored page 3 of 3; device |
 | 30 | Memory: 8 recents | shipped | M3: stored copies follow the recents list (see prune); device |
 | 31 | Memory: highlight choice | pending | |
-| 32 | Header row | pending | |
-| 33 | Overflow menu | pending | |
-| 34 | Keyboard-shortcuts dialog (phone wording; Bluetooth keyboard) | pending | |
+| 32 | Header row | shipped | M5: phone layout (title readable; rotate/fit/full screen in the menu); device |
+| 33 | Overflow menu | shipped | M5; device |
+| 34 | Keyboard-shortcuts dialog (phone wording; Bluetooth keyboard) | shipped | M5: "Gestures and shortcuts" (gestures first, then "With a keyboard attached"); shortcut bindings stay active and work through the engine key pipeline; a real Bluetooth keyboard was **not** tested |
 | 35 | About dialog (honest Android engine line) | pending | |
-| 36 | Layered system back (menu → sheet → panel history → outline → selection → full screen → exit) | pending | |
-| 37 | Predictive back (API 33+) | pending | |
-| 38 | Edge-to-edge insets, status / navigation bar styling in both themes | pending | |
-| 39 | Keep screen on while reading | pending | |
-| 40 | Material You colour does not override selection highlights | pending | |
-| 41 | Lifecycle: background with panel open, process death, restoration | pending | |
+| 36 | Layered system back (menu → sheet → panel history → outline → selection → full screen → exit) | shipped | M5: each layer observed on the device; see M5 |
+| 37 | Predictive back (API 33+) | shipped | M5: `enableOnBackInvokedCallback` set; layering verified on the API 36 emulator with edge-swipe back gestures; the animation itself was not captured |
+| 38 | Edge-to-edge insets, status / navigation bar styling in both themes | shipped | M5: device (API 31, system draws under the status bar) and API 36 emulator (enforced edge-to-edge at targetSdk 36); icons contrast in light and dark |
+| 39 | Keep screen on while reading | shipped | M5: `FLAG_KEEP_SCREEN_ON` acquired a WindowManager wake lock attributed to the app's uid with a document open; device |
+| 40 | Material You colour does not override selection highlights | shipped | by construction (no dynamic-colour package; static themes + `SelectionHighlight`); observed sky blue in both themes |
+| 41 | Lifecycle: background with panel open, process death, restoration | shipped | M5: `am kill` of a backgrounded app and relaunch restored document, page, zoom and the open sheet with its query; hidden WebView survived trim-memory levels; device |
 | 42 | Privacy: WebView data cleared at each run start and on detach | pending | |
 | 43 | TalkBack on pill, panel, page field | pending | |
-| 44 | Large font scale, remove animations, dark mode toggled with panel open | pending | |
-| 45 | Rotation mid-search, split screen, cutouts, sheet vs soft keyboard | pending | |
+| 44 | Large font scale, remove animations, dark mode toggled with panel open | shipped | M5: font scale 2.0 (title truncates, no overflow), dark↔light with the panel open (app re-themes; the loaded Google page does not until it reloads); the sheet's snap animation honours `disableAnimations`; the system animation scale itself was not changed on the device |
+| 45 | Rotation mid-search, split screen, cutouts, sheet vs soft keyboard | shipped | M5: rotation observed both ways (sheet ↔ docked side panel, same page kept); keyboard rides above the sheet and the document does not move; the top safe-area (cutout) is honoured in full screen; split screen **not** tested |
 
 ### M1 — Bootstrap (observed 2026-10-19)
 
@@ -2139,3 +2139,62 @@ reading "Close (Esc)" and Ctrl hints are desktop wording; the sheet vs the soft 
 `git diff main` on `linux/ windows/ packaging/` and the two platform workflows is empty. `pubspec.lock` diff is additive
 only (webview_flutter, _android, _platform_interface, _wkwebview); a local `pub get` rewrote the `webview_cef` entry to the
 local path override, and it was restored to the git pin each time.
+
+### M5 — Touch ergonomics, system UI, back, lifecycle, accessibility (observed 2026-10-19)
+
+**Shared-file additions (all behind a default-off flag, so desktop is unchanged):** `ReaderScreen`/`ReaderHeader`/`ReaderMenu`/
+`PdfView`/`SelectionPill`/`SearchPanel`/`PageField` take a `touch`/`phone` flag (derived once from `SearchPresentation.touch`); the
+reader gets a `BackScope` (a `PopEntry`, so the widget tree is not re-wrapped), `RestorationMixin` for the panel, a bottom
+safe-area spacer, and `WindowService.setKeepScreenOn`. New files: `back_scope.dart`, `system_bars.dart`. `MainActivity` implements
+the existing `dndreader/window` channel (full screen through `WindowInsetsControllerCompat`, `FLAG_KEEP_SCREEN_ON`), so
+`WindowService` itself needed no Android branch. `enableOnBackInvokedCallback` is set in the manifest.
+
+**Gesture conflict, resolved deliberately:** pan-drag scrolls (observed: no selection starts); long-press selects a word and shows
+handles; double-tap selects a word and does not zoom; zoom is pinch and the −/+ buttons. No `onGeneralTap` change was needed.
+
+**Defects from M2/M4, fixed and re-observed on the device:** the pill no longer lands on the lower handle (34 dp gap, 48 dp
+target, no Ctrl+E text); the header title is readable (rotate and full screen moved to the menu on a phone, plus a "Fit page" item,
+since fit-page is Ctrl+0 only on desktop); the context menu and tooltips lost their desktop shortcut text on touch.
+
+**Back, observed on the device unless noted:** menu open → Back closed the menu; sheet open → Back went back in the panel's own
+history first and closed the sheet when there was none; outline open → closed it; selection held → cleared it; in full screen → left
+it; nothing left → the app left (to the launcher). On the **API 36 emulator** the same layering held with real edge-swipe back
+gestures and `enableOnBackInvokedCallback` set (selection first, then the system left). The ordering differs from the brief's list in
+one place: the sheet's history comes *before* closing it (closing first would make history unreachable).
+
+**System UI:** device (API 31) draws under the status bar; the header spacer fixed touches being swallowed. API 36 emulator
+(targetSdk 36) enforces edge-to-edge: status and navigation bars transparent, header and bottom strip clear of them; icons
+contrast in both themes. A display cutout's inset stays in full screen. Keep-screen-on: with a document open a WindowManager
+`SCREEN_BRIGHT_WAKE_LOCK` attributed to the app's uid was held. No dynamic-colour package is used, so Material You cannot
+override the highlights.
+
+**Lifecycle:** "Don't keep activities" was **not** used: setting `always_finish_activities` through `settings put` has no effect
+on Android 12 (the developer-options toggle calls a binder method); the screenshot after it was identical, including the
+selection, which proved the activity was never recreated. Instead the stronger test was run: background the app with the sheet open
+at page 3, zoom 1.6, **`am kill`**, relaunch from the launcher: the same document at page 3 and zoom 1.6 returned and the sheet reopened
+on the same query (the framework restores it only after a kill, not on a normal launch); the selection is not restored. The
+hidden WebView survived `am send-trim-memory` at MODERATE, LOW and CRITICAL (the next search worked); PSS with the profile build
+and a 19-page document was **362 MB** (see M6 for the budgeted measurement; this is over the 300 MB budget and is reported there).
+
+**Accessibility (TalkBack itself was NOT run; the accessibility tree was read with `uiautomator dump`, and the semantics in widget
+tests):** header buttons carry labels ("Contents", "Zoom out", "Zoom in", "Open PDF", "Menu"); the page field is a labelled group
+("Page number, of 19") with the edit box inside it; the pill is a button labelled "Find meaning of the selected text" (a test found
+it was announced twice, label plus visible text; fixed with `excludeSemantics` on touch); Close is "Close" (no "(Esc)"); the sheet
+handle has increase/decrease actions so a screen reader can resize it. **Not verified:** the order and phrasing TalkBack actually
+speaks, the pill and sheet with TalkBack on, a stylus, a Bluetooth mouse, a real Bluetooth keyboard (key events injected with
+`adb input keycombination` did not reach the shortcut bindings; the engine key pipeline did), and `Ctrl+R` on the device.
+
+**An observation on the Google side:** on the emulator (WebView 133), after a few searches from the same network, Google served its
+"unusual traffic" page (`/sorry/index`, a reCAPTCHA) in the sheet; the panel showed it, Back and Close worked, and no input was
+sent at it. The Moto G60 (WebView 149) did not receive one.
+
+**Emulator:** `pixel7_api36`, API 36, **4 KB pages** (this image is not a 16 KB one), WebView 133. Used for predictive back and
+edge-to-edge only; it was shut down afterwards.
+
+**Defects noticed, not fixed:** a long-press on page background shows the context menu pinned to the top-left corner of the viewer
+(pdfrx's placement; harmless); Android draws a green focus ring around the Flutter view when a key event is injected (now
+disabled with `defaultFocusHighlightEnabled = false`, not re-checked); the loaded Google page keeps its old colour scheme until
+reloaded after a theme change.
+
+**Rule #1 proof:** see M6 (one proof covers M5 and M6 shared changes) and the final report; at M5: `dart format` clean, `flutter analyze` clean,
+`flutter test` **233 passed** (220 + 13 new, none changed), Linux release build and protected-path diff re-run before commit.
