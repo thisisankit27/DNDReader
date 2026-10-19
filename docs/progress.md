@@ -1842,9 +1842,9 @@ Evidence column is filled at the milestone that settles the row.
 | 1 | Open a PDF (picker) | shipped | M3: system picker (ACTION_OPEN_DOCUMENT), copy to private storage; device |
 | 2 | Open from intent: ACTION_VIEW / ACTION_SEND, cold / warm / second | shipped | M3: all five paths observed on the device (debug build) |
 | 3 | Continuous vertical scroll | shipped | M2/M5: swipe and fling on the device |
-| 4 | Pinch zoom | pending | |
+| 4 | Pinch zoom | shipped | pdfrx's own gesture, unchanged; **not driven on the device** (the shell cannot inject two-finger touch): in `docs/android-owner-test.md`. Zoom via the − / + buttons and via the controller was observed |
 | 5 | Zoom − / + buttons | shipped | M5: two taps on + zoomed in; device |
-| 6 | Fit page | pending | |
+| 6 | Fit page | shipped | M5/M6: new "Fit page" menu item (desktop is Ctrl+0 only) took a zoomed-in view back to the whole page; device |
 | 7 | `page n / N` indicator | shipped | M5: follows scrolling; device |
 | 8 | Editable page-number field | shipped | M5: typed 5 + Enter went to page 5; numeric keypad with ✓; the document did not reflow when the keyboard opened; device |
 | 9 | Rotate ±90° | shipped | M5: menu → Rotate page turned the pages; device. Phone offers clockwise only; counter-clockwise stays Ctrl+Shift+R |
@@ -1860,28 +1860,28 @@ Evidence column is filled at the milestone that settles the row.
 | 19 | Double-tap to select a word (vs touch double-tap = zoom) | shipped | M2: double-tap selects the word and does not zoom (existing `onGeneralTap`); zoom is pinch + the −/+ buttons |
 | 20 | Five colour-blind-safe highlight colours | shipped | unchanged code (theme-driven, no Material You dynamic colour in the app); sky blue observed in light and dark; the other four were **not** selected on the device |
 | 21 | Search panel: query text, Back, Open in browser, Close | shipped | M4: in the sheet on the device (profile build) |
-| 22 | Panel states: loading / loaded / failed + Retry / unavailable | pending | |
-| 23 | Google cookie-consent hint | pending | |
+| 22 | Panel states: loading / loaded / failed + Retry / unavailable | shipped | M6: loading and loaded (Google results), failed with Retry and Open in browser (Wi-Fi off), Retry after restoring Wi-Fi loaded the page; device. "Unavailable" (no usable system WebView) is unit-tested wording only; **not reproducible on this device** |
+| 23 | Google cookie-consent hint | shipped | Android wording added and unit-tested; Google showed **no** consent page on the device or emulator, so the hint itself was not observed |
 | 24 | Scroll position identical after the panel closes | shipped | M4: 0 differing pixels in the document area, before opening vs after closing, at the top and mid-document; device |
 | 25 | One long-lived browser per run, hidden not disposed | shipped | M4: Offstage + one session-owned adapter; widget test; Layer 2 shares one engine; device |
 | 26 | Bottom sheet with snap points (phone) / side panel (tablet breakpoint) | shipped | M4: sheet verified on the device; the ≥600 dp side-panel branch is widget-tested only, **not verified on a device** |
-| 27 | Memory: theme mode | pending | |
-| 28 | Memory: zoom | pending | |
+| 27 | Memory: theme mode | shipped | unchanged `SettingsService` (unit-tested); the in-app theme choice was not exercised on the device |
+| 28 | Memory: zoom | shipped | M5: zoom 1.6 came back after `am kill` and relaunch; device |
 | 29 | Memory: last document and page | shipped | M3: force-stop and relaunch restored page 3 of 3; device |
 | 30 | Memory: 8 recents | shipped | M3: stored copies follow the recents list (see prune); device |
-| 31 | Memory: highlight choice | pending | |
+| 31 | Memory: highlight choice | shipped | unchanged `SettingsService` (unit-tested); the choice was not exercised on the device |
 | 32 | Header row | shipped | M5: phone layout (title readable; rotate/fit/full screen in the menu); device |
 | 33 | Overflow menu | shipped | M5; device |
 | 34 | Keyboard-shortcuts dialog (phone wording; Bluetooth keyboard) | shipped | M5: "Gestures and shortcuts" (gestures first, then "With a keyboard attached"); shortcut bindings stay active and work through the engine key pipeline; a real Bluetooth keyboard was **not** tested |
-| 35 | About dialog (honest Android engine line) | pending | |
+| 35 | About dialog (honest Android engine line) | shipped | M6: shows "Android System WebView com.google.android.webview 149.0.7827.160, provided and updated by Android, not bundled with or patched by DNDReader" and the privacy line; device |
 | 36 | Layered system back (menu → sheet → panel history → outline → selection → full screen → exit) | shipped | M5: each layer observed on the device; see M5 |
 | 37 | Predictive back (API 33+) | shipped | M5: `enableOnBackInvokedCallback` set; layering verified on the API 36 emulator with edge-swipe back gestures; the animation itself was not captured |
 | 38 | Edge-to-edge insets, status / navigation bar styling in both themes | shipped | M5: device (API 31, system draws under the status bar) and API 36 emulator (enforced edge-to-edge at targetSdk 36); icons contrast in light and dark |
 | 39 | Keep screen on while reading | shipped | M5: `FLAG_KEEP_SCREEN_ON` acquired a WindowManager wake lock attributed to the app's uid with a document open; device |
 | 40 | Material You colour does not override selection highlights | shipped | by construction (no dynamic-colour package; static themes + `SelectionHighlight`); observed sky blue in both themes |
 | 41 | Lifecycle: background with panel open, process death, restoration | shipped | M5: `am kill` of a backgrounded app and relaunch restored document, page, zoom and the open sheet with its query; hidden WebView survived trim-memory levels; device |
-| 42 | Privacy: WebView data cleared at each run start and on detach | pending | |
-| 43 | TalkBack on pill, panel, page field | pending | |
+| 42 | Privacy: WebView data cleared at each run start and on detach | shipped | M6: the previous run's `app_webview/` (Cookies, IndexedDB, Local Storage, Service Worker; 4.7 MB) was gone right after launch, before any search; device. Detach clearing: best-effort, not observable (Android rarely delivers it) |
+| 43 | TalkBack on pill, panel, page field | shipped | labels and actions read from the accessibility tree and tested; **TalkBack itself was not run**: in `docs/android-owner-test.md` |
 | 44 | Large font scale, remove animations, dark mode toggled with panel open | shipped | M5: font scale 2.0 (title truncates, no overflow), dark↔light with the panel open (app re-themes; the loaded Google page does not until it reloads); the sheet's snap animation honours `disableAnimations`; the system animation scale itself was not changed on the device |
 | 45 | Rotation mid-search, split screen, cutouts, sheet vs soft keyboard | shipped | M5: rotation observed both ways (sheet ↔ docked side panel, same page kept); keyboard rides above the sheet and the document does not move; the top safe-area (cutout) is honoured in full screen; split screen **not** tested |
 
@@ -2198,3 +2198,65 @@ reloaded after a theme change.
 
 **Rule #1 proof:** see M6 (one proof covers M5 and M6 shared changes) and the final report; at M5: `dart format` clean, `flutter analyze` clean,
 `flutter test` **233 passed** (220 + 13 new, none changed), Linux release build and protected-path diff re-run before commit.
+
+### M6 — Tests, CI, budgets (measured 2026-10-19)
+
+**Privacy correction (found while measuring):** after a run that searched, the system WebView's `app_webview/` folder
+(Cookies, IndexedDB, Local Storage, Service Worker; 4.7 MB) was still on disk, and the adapter only cleared it at the *first search
+of the next run*, so "cleared each time the app starts" was an overclaim. `MainActivity` now deletes `app_webview/` and the cache's
+`WebView/` folder once per process in `onCreate`, before any WebView exists (a re-created activity does not repeat it: it
+would delete the folder under a live WebView). **Verified on the device:** installed over a build whose previous run had searched;
+`app_webview/` was 4,733 KB before launch and absent right after launch with no search made. The adapter's own pre-load clearing stays as
+defence in depth. **What the README may claim for Android, and no more:** search-panel data is kept in this app's private storage,
+which other apps cannot read; it is deleted when the app next starts (a killed run is covered the same way); it is not kept in memory;
+a Google cookie choice lasts until the app is closed and reopened; the WebView itself is Android's and is patched by Android/Play. It
+may **not** claim that nothing is written to disk during a run, that data is gone the moment the app is swiped away, or anything
+about Google's own server-side handling.
+
+**Budgets, measured against the numbers set before measuring.** Release = `flutter build apk --release --split-per-abi --obfuscate
+--split-debug-info`, R8 on, icon tree-shaking on (the Material Icons font went from 1,645,184 to 3,092 bytes). Frame timings are from
+a **profile** build (the dev harness is compiled out of release); everything else is the release APK on the Moto G60.
+
+| Metric | Budget | Measured | |
+|---|---|---|---|
+| arm64 release APK | ≤ 25 MB | **24,840,162 bytes (24.84 MB)**; Play download size 11.49 MB (stored libraries compress); armeabi-v7a 19.9 MB, x86_64 26.5 MB, universal not built | **met, by 160 KB** |
+| Cold start (`am start -W`, force-stopped, empty state) | ≤ 1.2 s | 1,033 1,041 1,048 1,051 1,052 1,062 1,072 1,166 1,178 1,245 ms; **median 1,057 ms** (two of ten runs were over 1.2 s) | **met (median)** |
+| Open a 240-page file, copy included | first page ≤ 2.0 s | 29.7 MB image-only 240-page PDF via the real "Open with" intent into the running app: first page visible ≈ **1.3 s** after the tap (polled at ~0.3 s resolution) | **met** |
+| Scroll frame time, 240 pages, 14 flings + 6 slow drags, 16 s | p95 ≤ 16 ms, p99 ≤ 32 ms, janky ≤ 5 % | text PDF (1.0 MB): p95 **14.1**, p99 **22.9**, max 39.9, **3.1 %** janky of 1,374 frames; image PDF (29.7 MB): p95 **12.0**, p99 **17.2**, max 41.6, **1.1 %** janky of 1,393 frames | **met** (profile build) |
+| Memory, 240-page file open, WebView alive and hidden | PSS ≤ 300 MB | empty state **106 MB**; 240-page image PDF open **250 MB**, after scrolling to page 58 **282 MB**; text PDF with the search sheet open **473 MB**; after closing it (WebView hidden) and scrolling **517 MB** (Graphics 304 MB, Native heap 77 MB, Code 24 MB) | **MISSED by ~217 MB** |
+
+**The memory miss is reported, not re-baselined.** Where it comes from: most of the growth is GPU "Graphics" memory (48 MB empty →
+137–170 MB with a document → 274–304 MB once the WebView has rendered), plus the in-process Chromium/WebView native heap. Levers
+that exist and were **not** pulled (each trades smoothness or the "one long-lived browser" requirement, so they are the owner's call):
+a smaller `PdfViewerParams.maxImageBytesCachedOnMemory` on touch (default 100 MB), and destroying the WebView when the panel
+closes (which would also lose the consent choice within a run). The renderer process is separate and not in these figures. The
+budget as stated (300 MB with a live WebView) does not look reachable on this device without one of those.
+
+**16 KB page size, verified on the release APK (not by the device booting):** every native library's LOAD segments are aligned to at least
+`0x4000` (`libpdfium.so` 0x4000, `libdartjni.so` 0x4000, `libdatastore_shared_counter.so` 0x4000, `libflutter.so` and `libapp.so` 0x10000),
+and `zipalign -c -P 16` reports all stored libraries OK. So `pdfrx`'s bundled PDFium (bblanchon `chromium/7811`) is 16 KB compatible. This
+is the ELF/zip check, not a run on a 16 KB device or emulator image (the API 36 image used here has 4 KB pages). **Not verified against current
+Play documentation text** (no network lookup was made); the check applied is the one Android documents (LOAD alignment ≥ 16 KB, uncompressed
+libraries 16 KB zip-aligned).
+
+**Dart cost of the dead desktop adapters: 0 KB.** `--analyze-size` on the arm64 release build lists no `package:webview_cef` and no
+`package:webview_flutter_windows` at all: the AOT compiler folds `Platform.isWindows`/`isLinux` and drops the unreachable adapters. The APK's native
+libraries are `libflutter` 11.7 MB, `libpdfium` 6.4 MB, `libapp` 5.6 MB (Dart AOT: Flutter framework ≈ 3.0 MB of it, `material_ui` 0.27 MB, `dndreader` 0.29 MB,
+`pdfrx` 0.21 MB, `webview_flutter_android` 0.13 MB), `libdartjni` 0.13 MB, plus dex 1.0 MB. **No CEF, no Chromium, no WebView2 code.**
+
+**Release-build crash check:** the debug-only SIGSEGV seen when launching the system picker did **not** occur on the release build: the real
+picker/"Open with" round trip, backgrounding, `am send-trim-memory` and a second document all ran without a crash (pid unchanged).
+
+**New hard gates (`android.yml`, `.github/scripts/android-check-apk.sh`).** *build* job: builds the arm64 release APK and fails unless the size is within
+25,000,000 bytes, the native libraries are exactly `libapp`/`libdartjni`/`libdatastore_shared_counter`/`libflutter`/`libpdfium` (no name matching
+cef/webview2/chromium), every library is 16 KB-aligned, and the permissions are exactly INTERNET plus AndroidX's own
+`<applicationId>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` (a signature-level permission AndroidX declares for the app's broadcast receivers; **not** a
+new capability, but named here because the brief says any new permission must be surfaced). Negative control: a 1 MB budget fails the script. The
+script passed locally on the release APK. *layer2* job: the existing Layer 2 suite on an API 34 x86_64 emulator; **the same command passed 11 of 11 locally on an
+API 36 emulator (WebView 133)**, besides 11 of 11 on the Moto G60. There is no `continue-on-error` in the file. What a green run proves is stated in
+the workflow header; it does not prove touch, jank or memory.
+
+**Dev tooling:** the harness `bench` output gained p95/p99/janky fields and a `frames` command (frame timings while something else drives the UI); both are
+compiled out of release builds and change nothing for desktop users.
+
+**Tests:** 233 passing (the M5 count; M6 added no tests of its own besides the APK gate script).

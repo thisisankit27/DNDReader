@@ -18,6 +18,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 import java.util.concurrent.Executors
 
 /**
@@ -42,6 +43,28 @@ class MainActivity : FlutterActivity() {
         // intent again. The document it named is restored from the saved document/page, so re-importing
         // it would reset the reader to page 1.
         launchIntentConsumed = savedInstanceState != null
+        clearWebViewDataOnce()
+    }
+
+    /**
+     * The system WebView keeps cookies, storage and cache in this app's private `app_webview/` folder; it has no
+     * in-memory mode. The previous run's data is deleted at the start of every process, before this process has
+     * created any WebView, so a run that was killed (which gets no chance to clean up) is covered too. Once per
+     * process: a re-created activity must not delete the folder under a live WebView.
+     */
+    private fun clearWebViewDataOnce() {
+        if (webViewDataCleared) return
+        webViewDataCleared = true
+        val data = applicationContext.dataDir
+        val cache = applicationContext.cacheDir
+        worker.execute {
+            try {
+                File(data, "app_webview").deleteRecursively()
+                File(cache, "WebView").deleteRecursively()
+            } catch (e: Exception) {
+                // Best effort; the adapter also clears cookies, storage and cache before its first load.
+            }
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -210,6 +233,8 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
+        @Volatile private var webViewDataCleared = false
+
         const val CHANNEL = "dndreader/documents"
         const val REQUEST_PICK = 4101
     }
