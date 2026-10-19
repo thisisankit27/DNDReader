@@ -1,0 +1,25 @@
+---
+import icon from '../assets/icon.svg?raw';
+import { url } from '../lib/url.js';
+const { current = '' } = Astro.props;
+---
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href={url()}>
+      <span aria-hidden="true" set:html={icon} />
+      <span>DNDReader</span>
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <a href={url('how-it-works/')} aria-current={current === 'how' ? 'page' : undefined}>How it works</a>
+      <a href={url('download/')} aria-current={current === 'download' ? 'page' : undefined}>Download</a>
+      <label class="theme" hidden>
+        <span class="sr-only">Colour theme</span>
+        <select data-theme-select>
+          <option value="system">System theme</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+    </nav>
+  </div>
+</header>

@@ -1,0 +1,12 @@
+---
+// Shown IN PLACE after a download link is clicked. The page cannot know whether the download finished or
+// was blocked, so it says "started" and always offers the direct link again. Filled in by download.js.
+import { url } from '../lib/url.js';
+const { next = null, nextLabel = 'Install it', platformBase = null } = Astro.props;
+---
+<div class="started" data-started hidden>
+  <p class="started__title" data-started-title>Download started</p>
+  <p><code data-started-file></code> (<span data-started-size></span>) should now appear in your browser's downloads.</p>
+  <p>Nothing happened, or it stopped part-way? <a data-started-again href="#">Download it again</a>. Some browsers ask for permission before they start; look for a prompt or a downloads icon.</p>
+  {next && <p>Next: <a href={next} data-started-next data-base={platformBase ?? ''}>{nextLabel}</a></p>}
+</div>

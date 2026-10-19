@@ -1,0 +1,9 @@
+---
+const { summary, hint = '', open = false } = Astro.props;
+---
+<details class="disclosure" open={open}>
+  <summary>
+    <span>{summary}{hint && <span class="disclosure__hint"> {hint}</span>}</span>
+  </summary>
+  <div class="disclosure__body"><slot /></div>
+</details>

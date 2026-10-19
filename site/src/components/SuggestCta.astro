@@ -1,0 +1,35 @@
+---
+// The primary download button. Without JavaScript it leads to the chooser. With JavaScript it becomes a
+// direct download for the platform the browser suggests (a suggestion, never a decision), with every other
+// option one click away.
+import { url } from '../lib/url.js';
+import StartedPanel from './StartedPanel.astro';
+import { status, releasesUrl, clientData, latest } from '../lib/site.js';
+const { othersHref = url('download/') } = Astro.props;
+const data = clientData();
+const available = status === 'ok' && Object.keys(data).length > 0;
+---
+<div class="suggest" data-dl data-suggest>
+  {available ? (
+    <>
+      <a class="btn" href={url('download/')} data-suggest-cta>
+        <span data-suggest-label>Choose your download</span>
+        <span class="btn__sub" data-suggest-sub>Version {latest.version} for Ubuntu, Windows and Android</span>
+      </a>
+      <div class="hero__note">
+        <p data-suggest-guess hidden><span data-guess-text></span><a href={othersHref}>Other downloads</a></p>
+        <p data-distro-note hidden>The Linux download is for Ubuntu 26.04. Other Linux distributions haven't been tested.</p>
+      </div>
+      <StartedPanel next={url('download/')} nextLabel="Continue to the install steps" platformBase={url('download/')} />
+      <script type="application/json" id="dl-data" set:html={JSON.stringify(data)} />
+    </>
+  ) : (
+    <>
+      <a class="btn" href={releasesUrl} data-suggest-cta>
+        <span>See the latest release</span>
+        <span class="btn__sub">Download links are temporarily unavailable here</span>
+      </a>
+      <div class="hero__note"><p>{status === 'no-releases' ? 'No release is published yet.' : 'This page could not load the current download details, so it shows none rather than guess. The latest release is on GitHub.'}</p></div>
+    </>
+  )}
+</div>

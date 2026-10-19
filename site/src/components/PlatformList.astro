@@ -1,0 +1,39 @@
+---
+// Three rows, one per platform: what it is for, what it costs in bytes, and a download that starts at once.
+import { url } from '../lib/url.js';
+import { PLATFORMS, ORDER } from '../lib/platforms.js';
+import { assetsFor, status } from '../lib/site.js';
+import StartedPanel from './StartedPanel.astro';
+
+const truth = {
+  ubuntu: "For Ubuntu 26.04 on 64-bit Intel or AMD computers. It's large because it carries its own browser engine for the search panel.",
+  windows: "For Windows 10 (version 1809) or newer. The installer isn't signed, so Windows will warn you; the page explains what to check.",
+  android: 'For Android 8.0 or newer. You install it from a file rather than a store, so Android asks for your permission before it installs it.',
+};
+---
+<ul class="platforms">
+  {ORDER.map((key) => {
+    const p = PLATFORMS[key];
+    const a = assetsFor(key)[0];
+    return (
+      <li data-dl id={key}>
+        <div>
+          <h3>{p.name}</h3>
+          <p>{truth[key]}</p>
+        </div>
+        <div class="platforms__act">
+          {a ? (
+            <a class="btn" href={a.url} data-download data-file={a.filename} data-size={a.size}>
+              <span>Download for {p.name}</span>
+              <span class="btn__sub">{a.size}</span>
+            </a>
+          ) : (
+            <span class="disabled">{status === 'ok' ? `Not in this release` : 'Download unavailable right now'}</span>
+          )}
+          <a href={url(`download/${p.slug}/`)}>Install steps</a>
+        </div>
+        {a && <StartedPanel next={url(`download/${p.slug}/#install`)} nextLabel={`Install it: ${p.name} steps`} />}
+      </li>
+    );
+  })}
+</ul>

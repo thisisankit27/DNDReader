@@ -1,0 +1,109 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import DownloadCard from '../../components/DownloadCard.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import ChecksumBlock from '../../components/ChecksumBlock.astro';
+import Callout from '../../components/Callout.astro';
+import Disclosure from '../../components/Disclosure.astro';
+import PlatformNotice from '../../components/PlatformNotice.astro';
+import { url } from '../../lib/url.js';
+import { assetsFor, latest, issuesUrl } from '../../lib/site.js';
+const assets = assetsFor('ubuntu');
+const file = assets[0]?.filename ?? 'dndreader_VERSION-1_amd64.deb';
+const title = latest ? `Download DNDReader for Ubuntu, version ${latest.version}` : 'Download DNDReader for Ubuntu';
+---
+<Layout title={title} description="Install DNDReader on Ubuntu 26.04: a .deb package, the exact install command, and how to check the download." path="download/ubuntu/" current="download">
+  <div class="wrap page-body" data-platform-page="ubuntu">
+    <header class="page-head">
+      <h1>DNDReader for Ubuntu</h1>
+      <p class="lede">An installer package (.deb) for Ubuntu 26.04. It is a large download, so the size is shown before you click.</p>
+    </header>
+
+    <PlatformNotice />
+    <Callout kind="warning" title="This computer looks like it uses an ARM processor" data-arch-warn="arm" hidden>
+      <p>This download is for 64-bit Intel and AMD computers (amd64). It can't be installed on ARM.</p>
+    </Callout>
+    <Callout kind="warning" title="This computer looks 32-bit" data-arch-warn="x86-32" hidden>
+      <p>This download needs a 64-bit computer (amd64).</p>
+    </Callout>
+
+    <DownloadCard platform="ubuntu" assets={assets}>
+      <p><strong>Why is it so large?</strong> Linux has no built-in web view that DNDReader can use for the search panel, so this package carries its own copy of the Chromium browser engine. It takes about 1.5 GB of disk space once installed. The Windows and Android versions use a browser engine already on the computer or phone, which is why they are much smaller.</p>
+    </DownloadCard>
+
+    <p class="tested">Tested on Ubuntu 26.04 (64-bit Intel or AMD), installed from this package. Other Ubuntu releases and other Linux distributions have not been tested. The package's dependencies were taken from a 26.04 machine, so it may refuse to install elsewhere.</p>
+
+    <section class="block" id="before" aria-labelledby="h-before">
+      <h2 id="h-before">Before you start</h2>
+      <p>You need Ubuntu 26.04 on a 64-bit Intel or AMD computer, and about 1.5 GB of free disk space. Not sure? Press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> to open a terminal and run these two commands. They should print <code>26.04</code> and <code>amd64</code>.</p>
+      <CodeBlock label="Ubuntu release" what="the release check command" code="lsb_release -rs" />
+      <CodeBlock label="Processor type" what="the processor check command" code="dpkg --print-architecture" />
+    </section>
+
+    <section class="block" id="install" aria-labelledby="h-install">
+      <h2 id="h-install">Install</h2>
+      <ol class="steps">
+        <li>
+          <h3>Open a terminal</h3>
+          <p>Press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd>.</p>
+        </li>
+        <li>
+          <h3>Go to your downloads</h3>
+          <p>Browsers on Ubuntu save to the Downloads folder by default.</p>
+          <CodeBlock label="Command" what="the cd command" code="cd ~/Downloads" />
+        </li>
+        <li>
+          <h3>Install the package</h3>
+          <CodeBlock label="Install command" what="the install command" code={`sudo apt install ./${file}`} />
+          {!assets[0] && <p class="small muted">Use the real file name you downloaded in place of VERSION.</p>}
+          <p>Keep the <code>./</code> at the start: it tells apt the package is a file on this computer. It asks for your password and shows what it will install.</p>
+        </li>
+        <li>
+          <h3>Open DNDReader</h3>
+          <p>Find DNDReader in your applications. You can also right-click a PDF, choose <strong>Open With</strong>, and pick DNDReader.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="block" aria-labelledby="h-verify">
+      <h2 id="h-verify">Check the download</h2>
+      <Disclosure summary="Check that the file is the one published" hint="(optional)">
+        <ChecksumBlock assets={assets} os="ubuntu" />
+      </Disclosure>
+    </section>
+
+    <section class="block" aria-labelledby="h-expect">
+      <h2 id="h-expect">What to expect</h2>
+      <Callout kind="note" title="The search panel runs in a browser sandbox, or not at all">
+        <p>The package installs a security profile so the search panel's browser can run inside its sandbox. If the sandbox can't start, DNDReader does not fall back to an unsandboxed browser: the panel says search is unavailable and offers to open the results in your own browser instead.</p>
+      </Callout>
+      <Callout kind="note" title="There is no automatic update">
+        <p>A package installed this way is not updated by Ubuntu. Because it bundles its own browser engine, security fixes for that engine reach you when you install a newer package from this site, in the same way.</p>
+      </Callout>
+    </section>
+
+    <section class="block" aria-labelledby="h-wrong">
+      <h2 id="h-wrong">If something goes wrong</h2>
+      <ul>
+        <li><strong>apt says the architecture is wrong, or a dependency can't be found.</strong> This usually means the computer isn't Ubuntu 26.04 on amd64. Run the two checks under "Before you start".</li>
+        <li><strong>The download stopped part-way.</strong> Use <strong>Download it again</strong> from the panel above, or resume it from your browser's download list; the server supports resuming.</li>
+        <li><strong>The panel says search is unavailable.</strong> See the sandbox note above.</li>
+        <li><strong>The checksum doesn't match.</strong> Don't install it. See "Check the download".</li>
+        <li><strong>Anything else.</strong> <a href={issuesUrl}>Open an issue</a> and say what you saw.</li>
+      </ul>
+    </section>
+
+    <section class="block" aria-labelledby="h-remove">
+      <h2 id="h-remove">Uninstall</h2>
+      <CodeBlock label="Command" what="the uninstall command" code="sudo apt remove dndreader" />
+    </section>
+
+    <section class="block" aria-labelledby="h-next">
+      <h2 id="h-next">Next</h2>
+      <ul class="plain-list">
+        <li><a href={url('how-it-works/')}>How looking things up works, and what it doesn't promise</a></li>
+        <li><a href={url('download/')}>Other platforms</a></li>
+      </ul>
+    </section>
+  </div>
+</Layout>

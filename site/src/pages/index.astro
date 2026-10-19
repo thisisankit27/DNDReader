@@ -1,0 +1,118 @@
+---
+import Layout from '../layouts/Layout.astro';
+import SuggestCta from '../components/SuggestCta.astro';
+import ReaderDemo from '../components/ReaderDemo.astro';
+import PlatformList from '../components/PlatformList.astro';
+import PrivacyTable from '../components/PrivacyTable.astro';
+import Limits from '../components/Limits.astro';
+import { url } from '../lib/url.js';
+import { latest, publishedOn, repoUrl, licenseUrl, issuesUrl } from '../lib/site.js';
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'DNDReader',
+  description: 'A small, open-source PDF reader where looking something up does not cost you your place.',
+  applicationCategory: 'UtilitiesApplication',
+  operatingSystem: 'Ubuntu, Windows, Android',
+  license: 'https://www.apache.org/licenses/LICENSE-2.0',
+  url: Astro.site ? new URL(url(), Astro.site).href : undefined,
+  ...(latest ? { softwareVersion: latest.version } : {}),
+};
+---
+<Layout
+  title="DNDReader: a PDF reader where looking things up doesn't lose your place"
+  description="A small open-source PDF reader for Ubuntu, Windows and Android. Look something up beside the page, close it, and you are exactly where you were."
+  path=""
+  jsonLd={jsonLd}
+>
+  <section class="hero">
+    <div class="wrap hero__grid">
+      <div>
+        <h1>Look it up without losing your place.</h1>
+        <p class="lede">DNDReader is a small, open-source PDF reader. Select a word, choose Find meaning, and search results open in a panel beside the page. Close the panel and you are exactly where you were.</p>
+        <div class="hero__cta"><SuggestCta /></div>
+        <div class="hero__note">
+          <p>Open source (<a href={licenseUrl}>Apache-2.0</a>). No account to create. Looking things up needs an internet connection.</p>
+        </div>
+      </div>
+      <ReaderDemo />
+    </div>
+  </section>
+
+  <section class="section" id="how">
+    <div class="wrap">
+      <h2>How it works</h2>
+      <p class="section-intro">The name is the idea: DND stands for Do Not Disturb. Looking something up shouldn't disturb your reading.</p>
+      <ol class="how">
+        <li>
+          <h3>Select</h3>
+          <p>Select a word, phrase or passage in the PDF. On a phone, press and hold, then drag the handles.</p>
+        </li>
+        <li>
+          <h3>Find meaning</h3>
+          <p>Choose <strong>Find meaning</strong>. Search results open in a panel inside the reader: beside the page, or as a sheet from the bottom on a phone.</p>
+        </li>
+        <li>
+          <h3>Close and carry on</h3>
+          <p>Close the panel (press <kbd>Esc</kbd>, or Back on Android). The page hasn't moved. You are exactly where you were.</p>
+        </li>
+      </ol>
+      <p class="section-intro muted small">On a computer, <kbd>Ctrl</kbd>+<kbd>E</kbd> does the same as choosing Find meaning. <a href={url('how-it-works/')}>More on how it works</a>.</p>
+    </div>
+  </section>
+
+  <section class="section" id="limits">
+    <div class="wrap">
+      <h2>What it is, and what it doesn't promise</h2>
+      <div class="two">
+        <div>
+          <h3>What you get</h3>
+          <ul class="plain-list">
+            <li>A PDF reader: scroll, zoom, jump to a page, the document's contents, full screen, and light and dark themes.</li>
+            <li>Search results inside the reader, so you never switch windows or tabs.</li>
+            <li>Your place kept: closing the panel leaves the page exactly where it was.</li>
+            <li>Open source, with no account, no telemetry and no server of ours.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>What it doesn't promise</h3>
+          <Limits />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="download">
+    <div class="wrap">
+      <h2>Download</h2>
+      <p class="section-intro">{latest ? <>Version {latest.version}, published {publishedOn}. Each page shows what has and hasn't been tested on that platform.</> : <>Download details are unavailable right now.</>}</p>
+      <PlatformList />
+    </div>
+  </section>
+
+  <section class="section" id="privacy">
+    <div class="wrap">
+      <h2>What stays on your device</h2>
+      <div class="prose section-intro">
+        <p>The text you select is sent to Google as a search when you choose Find meaning, exactly as if you had typed it into a search box. Your PDF is never uploaded. There is no telemetry, analytics or crash reporting, and no server of ours.</p>
+        <p>Loading Google Search involves Google's own cookies, as in any browser. What happens to them differs by platform, so it is listed separately:</p>
+      </div>
+      <PrivacyTable />
+    </div>
+  </section>
+
+  <section class="section" id="open-source">
+    <div class="wrap">
+      <h2>Open source, one release so far</h2>
+      <div class="prose section-intro">
+        <p>DNDReader is a solo project by Ankit Srivastava, licensed under Apache-2.0. There is one published release so far{latest ? <>, version {latest.version}</> : ''}. It is not a company and has no user numbers to quote. Each download page says exactly how far that platform has been tested.</p>
+        <p><a href={repoUrl}>Read the source</a> · <a href={licenseUrl}>Read the licence</a> · <a href={issuesUrl}>Report a problem</a></p>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    import '../scripts/reader-demo.js';
+  </script>
+</Layout>

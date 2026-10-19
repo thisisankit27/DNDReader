@@ -1,0 +1,36 @@
+---
+// Verification for one platform: the published SHA-256, the exact command for that OS, and what to do if
+// it differs. Hashes come from release data; the commands take the real file name.
+import CodeBlock from './CodeBlock.astro';
+import Callout from './Callout.astro';
+import { issuesUrl } from '../lib/site.js';
+const { assets, os } = Astro.props;
+const primary = assets[0];
+const cmd = {
+  ubuntu: { label: 'Run in a terminal', code: (f) => `sha256sum ~/Downloads/${f}` },
+  windows: { label: 'Run in PowerShell', code: (f) => `Get-FileHash "$HOME\\Downloads\\${f}" -Algorithm SHA256` },
+  android: { label: 'Run on a computer (Linux or macOS), in the folder with the file', code: (f) => `sha256sum ${f}` },
+}[os];
+---
+<div class="stack">
+  <p>A checksum is a fingerprint of a file. If the one you calculate matches the one published here, the file arrived complete and unaltered.</p>
+  {assets.map((a) => a.sha256 ? (
+    <CodeBlock label={`Published SHA-256 for ${a.filename}`} what={`the SHA-256 for ${a.filename}`} code={a.sha256} id={`sha-${a.id}`} />
+  ) : (
+    <p><strong>{a.filename}</strong>: no checksum is published for this file, so there is nothing to compare it with.</p>
+  ))}
+  {primary && primary.sha256 && (
+    <>
+      <CodeBlock label={cmd.label} what="the checksum command" code={cmd.code(primary.filename)} id={`cmd-${os}`} />
+      {os === 'windows' && (
+        <CodeBlock label="Or in Command Prompt" what="the Command Prompt checksum command" code={`certutil -hashfile "%USERPROFILE%\\Downloads\\${primary.filename}" SHA256`} id="cmd-windows-certutil" />
+      )}
+      {os === 'android' && assets.length > 1 && <p class="small muted">Use the name of the file you downloaded; the published number for each file is above. On Windows, use <code>Get-FileHash</code> in PowerShell.</p>}
+      <p>Compare the result with the published number. Every character must match; capital and lower-case letters don't matter. Windows prints capitals.</p>
+    </>
+  )}
+  <Callout kind="danger" title="If the numbers are different">
+    <p><strong>Do not run or install the file.</strong> Delete it, download it again from this page, and check again. If it still differs, <a href={issuesUrl}>open an issue</a> and say which file and what you got.</p>
+  </Callout>
+  <p class="small muted">A matching checksum shows the file is the one published, intact. It can't show the release itself is trustworthy, because the file and its number come from the same place.{os === 'android' ? ' The signature check below goes further.' : ''}</p>
+</div>

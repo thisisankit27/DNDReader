@@ -1,0 +1,8 @@
+---
+// Shown only when the browser looks like a different platform from this page. A suggestion with the
+// alternative one click away; it never blocks the page.
+import { url } from '../lib/url.js';
+---
+<div class="callout" data-platform-mismatch data-base={url('download/')} hidden>
+  <p><span data-mismatch-text></span><a data-mismatch-link href={url('download/')}>See all downloads</a></p>
+</div>

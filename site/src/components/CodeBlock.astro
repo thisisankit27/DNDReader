@@ -1,0 +1,16 @@
+---
+// A command or value with a Copy button. The button is hidden until JavaScript runs (no dead control),
+// the text wraps instead of scrolling sideways so it stays usable on a phone, and what is copied is exactly
+// the text shown.
+const { code, label = 'Command', what = label.toLowerCase(), id: given } = Astro.props;
+// Deterministic id (builds must be reproducible): a short hash of what is shown.
+const hash = [...`${label}|${code}`].reduce((h, c) => ((h << 5) + h + c.charCodeAt(0)) >>> 0, 5381).toString(36);
+const id = given ?? `c-${hash}`;
+---
+<div class="code" id={id}>
+  <div class="code__bar">
+    <span class="code__label">{label}</span>
+    <button type="button" class="copy" data-copy={id} data-what={what} aria-label={`Copy ${what}`} hidden>Copy</button>
+  </div>
+  <pre><code>{code}</code></pre>
+</div>

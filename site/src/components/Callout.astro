@@ -1,0 +1,9 @@
+---
+// A callout is an object on the page: a warning, a note, or a stop sign. The kind is always also said in
+// words (the title), never by colour alone.
+const { kind = 'note', title, ...rest } = Astro.props;
+---
+<div class={`callout callout--${kind}`} role={kind === 'danger' ? 'alert' : undefined} {...rest}>
+  {title && <p class="callout__title">{title}</p>}
+  <slot />
+</div>
