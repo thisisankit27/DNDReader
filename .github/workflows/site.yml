@@ -1,0 +1,152 @@
+# The landing and download site (site/), built and deployed to GitHub Pages.
+#
+# What runs when:
+#   pull_request   builds and tests the site; never deploys.
+#   push to main   builds, tests and DEPLOYS (only for changes under site/ or to this file).
+#   release        a published/edited/deleted GitHub Release re-runs the site on main, so download details are
+#                  regenerated from the release within minutes. (A `release` event runs at the TAG's commit and
+#                  ref, and Pages refuses deployments from tag refs, so this only dispatches the real run.)
+#   schedule       weekly safety net, in case a release event was missed.
+#   workflow_dispatch  by hand: Actions -> site -> Run workflow.
+#
+# Release data is regenerated on EVERY build from the GitHub Releases API (site/scripts/fetch-releases.mjs);
+# nothing about a release is typed into the site. If the API is unavailable the site still builds, in a
+# degraded form with no version/size/checksum, and the DEPLOY IS SKIPPED so the last good site stays live.
+#
+# Custom domain: repository variables SITE_URL (https://<domain>) and SITE_BASE (/) switch the whole site
+# with no code change. See site/README.md.
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/site.yml']
+  pull_request:
+    paths: ['site/**', '.github/workflows/site.yml']
+  release:
+    types: [published, edited, deleted]
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Deployments queue (never cancel one half-way); pull-request runs are cancelled by newer pushes.
+  group: site-${{ github.event_name == 'pull_request' && github.ref || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  ASTRO_TELEMETRY_DISABLED: '1'
+
+jobs:
+  # A release event runs at the tag, so it only asks for the real run on main.
+  rerun-on-release:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Run the site workflow on the default branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run site.yml --repo "$GITHUB_REPOSITORY" --ref "${{ github.event.repository.default_branch }}"
+
+  build:
+    if: github.event_name != 'release'
+    runs-on: ubuntu-latest
+    outputs:
+      data_status: ${{ steps.releases.outputs.data_status }}
+    defaults:
+      run:
+        working-directory: site
+    env:
+      # Unset repository variables arrive as empty strings, which means "use the default".
+      SITE_URL: ${{ vars.SITE_URL }}
+      SITE_BASE: ${{ vars.SITE_BASE }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The application is untouchable from this work: a site/* branch may change only site/ and this file.
+      - name: Nothing outside site/ and this workflow changed
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'site/')
+        working-directory: .
+        run: |
+          outside=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -v -E '^(site/|\.github/workflows/site\.yml$)' || true)
+          if [ -n "$outside" ]; then
+            echo "::error::a site/* branch changed files outside site/ and site.yml:"; echo "$outside"; exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - run: npm ci
+
+      - name: Generate the release data from the GitHub Releases API
+        id: releases
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run releases
+
+      - name: The signing-key pin agrees with android-release.yml and the release notes
+        run: npm run check:pin
+
+      - run: npm run test:unit
+
+      - name: Build the site
+        run: npm run build:only
+
+      - uses: actions/configure-pages@v5
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          path: site/dist
+
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Playwright and axe (both base paths, every error fixture, three engines)
+        env:
+          PW_ALL_BROWSERS: '1'
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npx playwright test
+
+      - name: Keep the test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            site/playwright-report
+            site/test-results
+          retention-days: 7
+
+  deploy:
+    needs: build
+    # Only from main, and only when the release data was real: a degraded build never replaces a good site.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.build.outputs.data_status == 'ok'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  skipped-degraded:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.build.outputs.data_status != 'ok'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Say why nothing was deployed
+        run: echo "::warning::release data status was '${{ needs.build.outputs.data_status }}', so the deploy was skipped and the last good site stays live."

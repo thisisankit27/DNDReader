@@ -1,0 +1,57 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Limits from '../components/Limits.astro';
+import PrivacyTable from '../components/PrivacyTable.astro';
+import { url } from '../lib/url.js';
+import { issuesUrl, repoUrl } from '../lib/site.js';
+---
+<Layout
+  title="How DNDReader works, and what it doesn't promise"
+  description="How Find meaning works, what the search panel does and doesn't do, and what stays on your device on Ubuntu, Windows and Android."
+  path="how-it-works/"
+  current="how"
+>
+  <div class="wrap page-body">
+    <header class="page-head">
+      <h1>How it works</h1>
+      <p class="lede">One idea: looking something up should not cost you your place.</p>
+    </header>
+
+    <section class="block prose" aria-labelledby="h-idea">
+      <h2 id="h-idea">The idea</h2>
+      <p>You select text in a PDF and a <strong>Find meaning</strong> action appears. Choosing it opens Google Search results in a panel inside the reader. Close the panel and the page is exactly where you left it, with no tab to find your way back from. The name is the same idea: DND stands for Do Not Disturb.</p>
+      <p>On a computer, <kbd>Ctrl</kbd>+<kbd>E</kbd> chooses Find meaning and <kbd>Esc</kbd> closes the panel. On Android, press and hold a word, drag the handles, then choose Find meaning; Back closes things one layer at a time, so it closes the panel before it leaves the document.</p>
+      <p>Technically, the selected text is put into a search address and the panel navigates to it when you click, like a browser. DNDReader never reads, scrapes or automates the results page.</p>
+    </section>
+
+    <section class="block prose" aria-labelledby="h-limits">
+      <h2 id="h-limits">What it doesn't promise</h2>
+      <Limits />
+      <p>These are limits of how the panel works, not bugs waiting for a fix. DNDReader shows Google Search; it is not an AI assistant and has none of its own.</p>
+      <p><strong>One question isn't settled.</strong> Whether Google's terms permit loading Search inside another app's panel has not been established by this project. Google's terms are written around browsers, and nothing here concludes that any use is exempt. Google may also change how embedded browsers behave without notice.</p>
+    </section>
+
+    <section class="block prose" aria-labelledby="h-size">
+      <h2 id="h-size">Why the downloads differ in size</h2>
+      <p>The search panel needs a browser engine. On Windows it uses Microsoft's WebView2, and on Android the phone's own system WebView, which is why those downloads are small. Linux has no built-in web view DNDReader can use, so the Ubuntu package carries its own Chromium, which is why it is large and why it takes updates from you rather than from Ubuntu.</p>
+    </section>
+
+    <section class="block block--wide" id="privacy" aria-labelledby="h-priv">
+      <h2 id="h-priv">What stays on your device</h2>
+      <div class="prose">
+        <p><strong>What leaves it:</strong> the text you select, as a Google search, when you choose Find meaning. Your PDF is never uploaded. There is no telemetry, no analytics, no crash reporting and no server of ours. Only your preferences and the paths of recently opened documents are stored locally.</p>
+        <p><strong>Google's cookies</strong> are loaded in the panel as they would be in a browser. What happens to them differs by platform:</p>
+      </div>
+      <PrivacyTable />
+      <div class="prose">
+        <p>On Android, a choice you make on a Google consent screen lasts until the app is closed and reopened. On every platform the consent screen can appear again the next time you start the app.</p>
+      </div>
+    </section>
+
+    <section class="block prose" aria-labelledby="h-more">
+      <h2 id="h-more">More detail</h2>
+      <p>The full reasoning, including the options that were rejected, is in the project's <a href={`${repoUrl}/blob/main/docs/implementation-plan.md`}>implementation plan</a> and the <a href={`${repoUrl}/blob/main/README.md`}>README</a>. Found something that doesn't match this page? <a href={issuesUrl}>Open an issue</a>.</p>
+      <p><a href={url('download/')}>Download DNDReader</a></p>
+    </section>
+  </div>
+</Layout>

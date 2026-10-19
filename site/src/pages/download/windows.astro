@@ -1,0 +1,100 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import DownloadCard from '../../components/DownloadCard.astro';
+import ChecksumBlock from '../../components/ChecksumBlock.astro';
+import Callout from '../../components/Callout.astro';
+import Disclosure from '../../components/Disclosure.astro';
+import PlatformNotice from '../../components/PlatformNotice.astro';
+import { url } from '../../lib/url.js';
+import { assetsFor, latest, issuesUrl } from '../../lib/site.js';
+const assets = assetsFor('windows');
+const title = latest ? `Download DNDReader for Windows, version ${latest.version}` : 'Download DNDReader for Windows';
+---
+<Layout title={title} description="Install DNDReader on Windows 10 or 11: the installer, why Windows warns about it, and how to check the download." path="download/windows/" current="download">
+  <div class="wrap page-body" data-platform-page="windows">
+    <header class="page-head">
+      <h1>DNDReader for Windows</h1>
+      <p class="lede">An installer for Windows 10 (version 1809) or newer, 64-bit. It is not signed, so Windows will warn you; this page explains why and what to check.</p>
+    </header>
+
+    <PlatformNotice />
+    <Callout kind="warning" title="This computer looks like it uses an ARM processor" data-arch-warn="arm" hidden>
+      <p>This installer is built for 64-bit Intel and AMD computers (x64). It hasn't been tested on ARM.</p>
+    </Callout>
+    <Callout kind="warning" title="This computer looks 32-bit" data-arch-warn="x86-32" hidden>
+      <p>This installer needs 64-bit Windows.</p>
+    </Callout>
+
+    <DownloadCard platform="windows" assets={assets} />
+
+    <p class="tested">Tested on one Windows 10 22H2 computer: installing, reading, selecting text, Find meaning, the search panel, full screen, quitting and uninstalling. Not yet tested: Windows 11, a computer without Microsoft's WebView2 Runtime, other display scales, installing for all users, and Windows on ARM.</p>
+
+    <section class="block" aria-labelledby="h-warn">
+      <h2 id="h-warn">Windows will probably show a warning</h2>
+      <Callout kind="warning" title="The installer is unsigned, so Windows reports an unknown publisher">
+        <p>Windows SmartScreen warns about installers from publishers it doesn't recognise. This installer isn't signed with a code-signing certificate (the project hasn't bought one), so Windows can't tell who made it. The warning is accurate: it is the protection doing its job. Your browser may also say the file isn't commonly downloaded, for the same reason.</p>
+        <p><strong>What you can check:</strong> that the file matches the number published on this page (see "Check the download" below). That shows it is the file this project published and that it wasn't damaged or altered on the way.</p>
+        <p>Whether to run an unsigned installer is your decision. If you aren't comfortable with it, don't run it. This page doesn't tell you how to get past the warning: that choice belongs to you, on the screen in front of you.</p>
+      </Callout>
+    </section>
+
+    <section class="block" id="before" aria-labelledby="h-before">
+      <h2 id="h-before">Before you start</h2>
+      <p>You need 64-bit Windows 10 (version 1809 or newer) or Windows 11. To check, open <strong>Settings</strong>, then <strong>System</strong>, then <strong>About</strong>. "System type" should say 64-bit, and the version is under "Windows specifications".</p>
+      <p>The search panel uses Microsoft's WebView2 Runtime. It comes with Windows 11 and most Windows 10 computers. The installer is built to add it when it is missing; that case hasn't been tested.</p>
+    </section>
+
+    <section class="block" id="install" aria-labelledby="h-install">
+      <h2 id="h-install">Install</h2>
+      <ol class="steps">
+        <li>
+          <h3>Open the file you downloaded</h3>
+          <p>It is called <code>{assets[0]?.filename ?? 'DNDReader-VERSION-setup-x64.exe'}</code>{!assets[0] && ' (use the real version in the name you downloaded)'}. Open it from your browser's downloads list or from your Downloads folder.</p>
+        </li>
+        <li>
+          <h3>Read any Windows warning</h3>
+          <p>See "Windows will probably show a warning" above. Decide for yourself, ideally after checking the download.</p>
+        </li>
+        <li>
+          <h3>Follow the installer</h3>
+          <p>It installs for your own account and doesn't ask for administrator rights unless you choose to install for everyone. It offers DNDReader under <strong>Open with</strong> for PDF files.</p>
+        </li>
+        <li>
+          <h3>Open DNDReader</h3>
+          <p>Start it from the Start menu, or right-click a PDF, choose <strong>Open with</strong>, and pick DNDReader.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="block" aria-labelledby="h-verify">
+      <h2 id="h-verify">Check the download</h2>
+      <Disclosure summary="Check that the file is the one published" hint="(recommended, because the installer is unsigned)">
+        <ChecksumBlock assets={assets} os="windows" />
+      </Disclosure>
+    </section>
+
+    <section class="block" aria-labelledby="h-wrong">
+      <h2 id="h-wrong">If something goes wrong</h2>
+      <ul>
+        <li><strong>"This app can't run on your PC".</strong> The computer is probably 32-bit or older than Windows 10 version 1809. See "Before you start".</li>
+        <li><strong>The search panel says it is unavailable.</strong> The WebView2 Runtime may be missing. You can get it from <a href="https://developer.microsoft.com/microsoft-edge/webview2/">Microsoft's WebView2 page</a>.</li>
+        <li><strong>The download stopped part-way.</strong> Use <strong>Download it again</strong> from the panel above, or resume it from your browser's download list.</li>
+        <li><strong>The checksum doesn't match.</strong> Don't run it. See "Check the download".</li>
+        <li><strong>Anything else.</strong> <a href={issuesUrl}>Open an issue</a> and say what you saw.</li>
+      </ul>
+    </section>
+
+    <section class="block" aria-labelledby="h-remove">
+      <h2 id="h-remove">Uninstall</h2>
+      <p>Open <strong>Settings</strong>, then <strong>Apps</strong>, find DNDReader in the list, and choose <strong>Uninstall</strong>.</p>
+    </section>
+
+    <section class="block" aria-labelledby="h-next">
+      <h2 id="h-next">Next</h2>
+      <ul class="plain-list">
+        <li><a href={url('how-it-works/')}>How looking things up works, and what it doesn't promise</a></li>
+        <li><a href={url('download/')}>Other platforms</a></li>
+      </ul>
+    </section>
+  </div>
+</Layout>

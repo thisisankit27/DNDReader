@@ -1,0 +1,56 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import SuggestCta from '../../components/SuggestCta.astro';
+import PlatformList from '../../components/PlatformList.astro';
+import Disclosure from '../../components/Disclosure.astro';
+import { url } from '../../lib/url.js';
+import { latest, older, publishedOn, status } from '../../lib/site.js';
+import { decorate } from '../../lib/site.js';
+import { formatDate } from '../../lib/format.js';
+import { PLATFORMS } from '../../lib/platforms.js';
+---
+<Layout
+  title={latest ? `Download DNDReader ${latest.version} for Ubuntu, Windows or Android` : 'Download DNDReader for Ubuntu, Windows or Android'}
+  description="Choose your platform. DNDReader is available for Ubuntu 26.04, Windows 10 and later, and Android 8.0 and later. The download starts as soon as you click."
+  path="download/"
+  current="download"
+>
+  <div class="wrap page-body">
+    <header class="page-head">
+      <h1>Download DNDReader</h1>
+      <p class="lede">{latest ? <>Version {latest.version}, published {publishedOn}. Click a download and it starts at once; you stay on this page.</> : <>Download details are unavailable right now.</>}</p>
+    </header>
+
+    <SuggestCta othersHref="#all-platforms" />
+
+    <section class="block block--wide" id="all-platforms" aria-labelledby="h-all">
+      <h2 id="h-all">All platforms</h2>
+      <p>Pick the one that matches the device you want to read on. A suggestion above is only a guess from your browser, so check it.</p>
+      <PlatformList />
+    </section>
+
+    <section class="block" aria-labelledby="h-android">
+      <h2 id="h-android">Not sure which Android file?</h2>
+      <p>Use the main Android download. It is the file for almost every phone and tablet made since about 2017. The <a href={url('download/android/#other-files')}>Android page</a> lists the other two and says when each is for.</p>
+    </section>
+
+    {older.length > 0 && (
+      <section class="block" aria-labelledby="h-older">
+        <h2 id="h-older">Older versions</h2>
+        <p>Only the latest version is offered above. These are here so you can check a file you already have.</p>
+        {older.map((r) => (
+          <Disclosure summary={`Version ${r.version}`} hint={`(published ${formatDate(r.publishedAt)})`}>
+            <ul class="stack">
+              {r.assets.map(decorate).map((a) => (
+                <li>
+                  <a href={a.url}>{a.filename}</a> ({a.size})
+                  {a.sha256 ? <><br /><span class="small muted">SHA-256: </span><code class="hash">{a.sha256}</code></> : <><br /><span class="small muted">No checksum published.</span></>}
+                </li>
+              ))}
+            </ul>
+          </Disclosure>
+        ))}
+      </section>
+    )}
+  </div>
+</Layout>

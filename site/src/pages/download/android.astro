@@ -1,0 +1,108 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import DownloadCard from '../../components/DownloadCard.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import ChecksumBlock from '../../components/ChecksumBlock.astro';
+import Callout from '../../components/Callout.astro';
+import Disclosure from '../../components/Disclosure.astro';
+import PlatformNotice from '../../components/PlatformNotice.astro';
+import { url } from '../../lib/url.js';
+import { assetsFor, latest, issuesUrl, certFingerprint } from '../../lib/site.js';
+const assets = assetsFor('android');
+const file = assets[0]?.filename ?? 'DNDReader-VERSION-arm64-v8a.apk';
+const apksignerForm = certFingerprint.replace(/:/g, '').toLowerCase();
+const title = latest ? `Download DNDReader for Android, version ${latest.version}` : 'Download DNDReader for Android';
+---
+<Layout title={title} description="Install DNDReader on Android 8.0 or newer from an app file: which file to pick, what Android will ask, and how to verify the signature." path="download/android/" current="download">
+  <div class="wrap page-body" data-platform-page="android">
+    <header class="page-head">
+      <h1>DNDReader for Android</h1>
+      <p class="lede">An app file (.apk) for Android 8.0 or newer. It isn't on Google Play, so you install it from the file, and Android will ask for your permission before it does.</p>
+    </header>
+
+    <PlatformNotice />
+
+    <DownloadCard platform="android" assets={assets}>
+      <p>The main file is for <strong>arm64-v8a</strong>, which is almost every phone and tablet made since about 2017. A browser can't tell which processor your phone has, so this is the sensible default rather than a certainty. The other files are listed below for older phones and emulators.</p>
+    </DownloadCard>
+
+    <p class="tested">Tested on one phone (Moto G60, Android 12) and an Android 16 emulator. Not yet tested: Android 13 or newer on a real phone, TalkBack, a Bluetooth keyboard, mouse or stylus, split screen, and a very old or missing system WebView. The armeabi-v7a file builds but has never been run on a device.</p>
+
+    <section class="block" id="install" aria-labelledby="h-install">
+      <h2 id="h-install">Install</h2>
+      <ol class="steps">
+        <li>
+          <h3>Download the file</h3>
+          <p>Your browser may say a file like this can harm your device. Browsers say that about every app file, because an app file can install anything. It is a reason to be sure the file came from this page, not a judgement on this particular file.</p>
+        </li>
+        <li>
+          <h3>Open it</h3>
+          <p>When the download finishes, open it from your browser's notification or from the Files app.</p>
+        </li>
+        <li>
+          <h3>Android asks whether this app may install apps</h3>
+          <p>Android only lets an app install other apps if you have allowed that app to. You will be told your phone isn't allowed to install unknown apps from this source, and offered Settings. The permission belongs to one app (your browser, or Files). It allows that app to install other apps, and you can switch it off again afterwards, usually under Settings, Apps, Special app access, Install unknown apps.</p>
+          <p>Allow it only if you are happy with where the file came from. Checking the file (below) is how you find out.</p>
+        </li>
+        <li>
+          <h3>Google Play Protect may have something to say</h3>
+          <p>Play Protect may scan the app or show a message about it. If it blocks the installation, stop there and don't work around it. Please <a href={issuesUrl}>open an issue</a> so it can be looked at.</p>
+        </li>
+        <li>
+          <h3>Open DNDReader</h3>
+          <p>Open it from your apps. To read a PDF, pick one from the picker, or in another app choose <strong>Share</strong> or <strong>Open with</strong> and pick DNDReader. Press and hold a word, drag the handles, then choose <strong>Find meaning</strong>.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="block" aria-labelledby="h-verify">
+      <h2 id="h-verify">Check the download</h2>
+      <Disclosure summary="Check that the file is the one published, and signed by this project" hint="(optional; needs a computer)">
+        <ChecksumBlock assets={assets} os="android" />
+        <h3>The signature check</h3>
+        <p>Every DNDReader APK is signed with the project's release key. A signature proves more than a checksum: it shows the file came from whoever holds that key, not just that it arrived intact. The Android SDK's <code>apksigner</code> tool prints the key's fingerprint.</p>
+        <CodeBlock label="Run on a computer with the Android SDK build-tools" what="the apksigner command" code={`apksigner verify --print-certs ${file}`} />
+        {!assets[0] && <p class="small muted">Use the real file name you downloaded in place of VERSION.</p>}
+        <p><strong>Look for the digest, not the label.</strong> The line that matters is the one that says <code>certificate SHA-256 digest</code>. Its label differs between tool versions: build-tools 36 prints <code>Signer #1 certificate SHA-256 digest:</code>, and build-tools 37 prints <code>V2 Signer: certificate SHA-256 digest:</code>. Read the number after the colon.</p>
+        <CodeBlock label="Expected certificate SHA-256 (as in the release notes)" what="the certificate fingerprint" code={certFingerprint} id="cert-colon" />
+        <CodeBlock label="The same fingerprint as apksigner prints it, with no colons" what="the certificate fingerprint without colons" code={apksignerForm} id="cert-plain" />
+        <p>Colons and capital letters don't matter; the digits must match. If they don't, <strong>don't install the file</strong> and <a href={issuesUrl}>open an issue</a>. Android also enforces this on updates: an update signed with a different key will not install over this app.</p>
+      </Disclosure>
+    </section>
+
+    <section class="block" aria-labelledby="h-know">
+      <h2 id="h-know">Good to know on Android</h2>
+      <Callout kind="note" title="DNDReader opens a copy of each PDF, not the original">
+        <p>Android doesn't give apps lasting paths to your files, so DNDReader copies each document into its own private storage when you open it (the eight most recent, plus the open one) and reads the copy. Changes to the original don't appear until you open or share the file again. Copies that leave the recent list are deleted, and uninstalling removes them all. Files over 1 GB are refused.</p>
+      </Callout>
+      <Callout kind="note" title="Memory use is higher than the target">
+        <p>With a 240-page PDF open and the search panel's browser alive, DNDReader used about 517 MB on the test phone, against a 300 MB target we set and missed. Reading without searching used about 250 to 280 MB.</p>
+      </Callout>
+      <p>DNDReader asks for one permission, Internet, which the search panel needs. It asks for no storage permission: documents arrive through the Android picker or the apps you share from. What the panel stores, and when it is deleted, is under <a href={url('how-it-works/#privacy')}>What stays on your device</a>.</p>
+    </section>
+
+    <section class="block" aria-labelledby="h-wrong">
+      <h2 id="h-wrong">If something goes wrong</h2>
+      <ul>
+        <li><strong>Android says "App not installed", or that the app isn't compatible.</strong> The file may not match your phone's processor. Try the armeabi-v7a file only if your phone is an older, 32-bit one. The x86_64 file is for emulators.</li>
+        <li><strong>The download didn't start or was blocked.</strong> Look for a prompt in your browser, then use <strong>Download it again</strong> from the panel above.</li>
+        <li><strong>Play Protect blocked it.</strong> Stop, and <a href={issuesUrl}>open an issue</a>.</li>
+        <li><strong>The signature or checksum doesn't match.</strong> Don't install it. See "Check the download".</li>
+        <li><strong>Anything else.</strong> <a href={issuesUrl}>Open an issue</a> and say what you saw.</li>
+      </ul>
+    </section>
+
+    <section class="block" aria-labelledby="h-remove">
+      <h2 id="h-remove">Uninstall</h2>
+      <p>Open <strong>Settings</strong>, then <strong>Apps</strong>, choose DNDReader, then <strong>Uninstall</strong>. This also removes the private copies of your documents.</p>
+    </section>
+
+    <section class="block" aria-labelledby="h-next">
+      <h2 id="h-next">Next</h2>
+      <ul class="plain-list">
+        <li><a href={url('how-it-works/')}>How looking things up works, and what it doesn't promise</a></li>
+        <li><a href={url('download/')}>Other platforms</a></li>
+      </ul>
+    </section>
+  </div>
+</Layout>

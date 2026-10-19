@@ -1,0 +1,23 @@
+---
+import { url } from '../lib/url.js';
+import { latest, publishedOn, repoUrl, issuesUrl, licenseUrl } from '../lib/site.js';
+---
+<footer class="site-footer">
+  <div class="wrap">
+    <ul>
+      <li><a href={url('download/')}>Download</a></li>
+      <li><a href={url('how-it-works/')}>How it works</a></li>
+      <li><a href={repoUrl}>Source code</a></li>
+      <li><a href={licenseUrl}>Licence (Apache-2.0)</a></li>
+      {latest && <li><a href={latest.notesUrl}>Release notes</a></li>}
+      <li><a href={issuesUrl}>Report a problem</a></li>
+      <li><a href={url('OFL-Atkinson-Hyperlegible.txt')}>Font licence</a></li>
+    </ul>
+    <p class="footer-data">
+      {latest
+        ? <>Version {latest.version}, published {publishedOn}. Version, size and checksum details on this site are generated from the project's published release, not typed by hand.</>
+        : <>Version details are unavailable right now.</>}
+    </p>
+    <p>© 2026 Ankit Srivastava. DNDReader is open source under the Apache License 2.0.</p>
+  </div>
+</footer>

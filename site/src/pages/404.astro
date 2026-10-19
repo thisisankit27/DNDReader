@@ -1,0 +1,17 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { url } from '../lib/url.js';
+---
+<Layout title="Page not found | DNDReader" description="That page doesn't exist." path="404/" noindex>
+  <div class="wrap page-body">
+    <header class="page-head">
+      <h1>That page doesn't exist</h1>
+      <p class="lede">The address may have been mistyped, or the page may have moved.</p>
+    </header>
+    <ul class="plain-list">
+      <li><a href={url()}>DNDReader home</a></li>
+      <li><a href={url('download/')}>Download DNDReader</a></li>
+      <li><a href={url('how-it-works/')}>How it works</a></li>
+    </ul>
+  </div>
+</Layout>

@@ -1,0 +1,54 @@
+---
+// The download object on each platform page. The button is a plain link to the file (works without JS).
+import { PLATFORMS, ABI_COPY } from '../lib/platforms.js';
+import { latest, status, releasesUrl, publishedOn } from '../lib/site.js';
+import StartedPanel from './StartedPanel.astro';
+import Callout from './Callout.astro';
+const { platform, assets } = Astro.props;
+const p = PLATFORMS[platform];
+const [primary, ...alts] = assets;
+---
+<section class="dlcard" data-dl aria-labelledby={`dl-${platform}`}>
+  <h2 id={`dl-${platform}`}>Download DNDReader for {p.name}</h2>
+  {primary ? (
+    <>
+      <div class="dlcard__row">
+        <a class="btn" href={primary.url} data-download data-file={primary.filename} data-size={primary.size} data-primary>
+          <span>Download for {p.name}</span>
+          <span class="btn__sub">Version {latest.version} · {primary.size}</span>
+        </a>
+        <dl class="dlcard__facts">
+          <div><dt>File</dt><dd><code>{primary.filename}</code></dd></div>
+          <div><dt>Size</dt><dd>{primary.size} ({primary.exactBytes})</dd></div>
+          <div><dt>Published</dt><dd>{publishedOn}</dd></div>
+          <div><dt>Needs</dt><dd>{p.requirement}</dd></div>
+        </dl>
+      </div>
+      <slot />
+      {alts.length > 0 && (
+        <details class="disclosure" id="other-files">
+          <summary><span>Other files for {p.name}<span class="disclosure__hint"> (most people don't need these)</span></span></summary>
+          <div class="disclosure__body">
+            <ul class="dlcard__alt">
+              {alts.map((a) => (
+                <li>
+                  <a href={a.url} data-download data-file={a.filename} data-size={a.size}>Download the {a.arch} file ({a.size})</a>
+                  <span class="small muted">{ABI_COPY[a.arch]}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
+      )}
+      <StartedPanel next="#install" nextLabel="Install it: the steps are just below" />
+    </>
+  ) : status === 'ok' ? (
+    <Callout kind="warning" title={`There is no ${p.name} file in version ${latest.version}`}>
+      <p>The latest release doesn't include a download for {p.name}, so this page offers none rather than point you at an older file. <a href={releasesUrl}>See the latest release on GitHub</a>.</p>
+    </Callout>
+  ) : (
+    <Callout kind="warning" title="Download links are temporarily unavailable">
+      <p>This page couldn't load the current download details, so it shows none rather than guess. <a href={releasesUrl}>Get the latest release from GitHub</a>.</p>
+    </Callout>
+  )}
+</section>

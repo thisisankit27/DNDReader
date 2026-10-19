@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.astro/
+.cache/
+# Generated at build time from the GitHub Releases API; never committed.
+src/data/releases.generated.json
+test-results/
+playwright-report/
+.build-out/

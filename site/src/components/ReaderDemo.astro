@@ -1,0 +1,25 @@
+---
+// A labelled illustration, NOT a screenshot and NOT real search results: abstract lines stand in for the
+// results page, and no one else's logo or interface is imitated. It is deliberately a swappable block: a
+// real screenshot of each platform can replace this component without touching the rest of the hero.
+---
+<div class="reader" data-reader>
+  <div class="reader__bar" aria-hidden="true"><span>Illustration of the reader</span><span>Page 112 of 240</span></div>
+  <div class="reader__page">
+    <div class="reader__marker" aria-hidden="true"><span>You are here</span></div>
+    <p class="reader__title">Reading well</p>
+    <p>
+      A <span class="sel">perspicacious<button type="button" class="pill" data-reader-open aria-expanded="false" aria-controls="reader-panel">Find meaning</button></span>
+      reader notices what the author left unsaid, and returns to the page with more than they came with.
+    </p>
+    <p>Every lookup used to mean leaving the page: a new tab, a search, and a long walk back to the paragraph you were in.</p>
+  </div>
+  <div class="reader__panel" id="reader-panel" data-reader-panel role="region" aria-labelledby="reader-title">
+    <div class="reader__panel-head">
+      <p class="reader__panel-title" id="reader-title" data-reader-title tabindex="-1">Search results</p>
+      <button type="button" class="close" data-reader-close>Close <span aria-hidden="true">(Esc)</span></button>
+    </div>
+    <div class="skel" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <p class="reader__caption">Illustration only. In the app, this panel shows a search results page beside your document.</p>
+  </div>
+</div>

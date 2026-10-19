@@ -1,0 +1,21 @@
+---
+// /download/linux/ is the URL people will guess. The package is for Ubuntu 26.04, so the real page is
+// /download/ubuntu/. This forwards there. Built by hand rather than with Astro's `redirects` option because
+// that option leaves the base path off the destination and the canonical URL.
+import { url, absolute } from '../../lib/url.js';
+const target = url('download/ubuntu/');
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DNDReader for Ubuntu</title>
+    <meta name="robots" content="noindex" />
+    <meta http-equiv="refresh" content={`0;url=${target}`} />
+    <link rel="canonical" href={absolute('download/ubuntu/')} />
+  </head>
+  <body>
+    <p>DNDReader's Linux download is for Ubuntu. <a href={target}>Go to the Ubuntu page</a>.</p>
+  </body>
+</html>

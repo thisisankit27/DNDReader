@@ -1,0 +1,52 @@
+[
+  {
+    "tag_name": "v0.3.0",
+    "name": "DNDReader 0.3.0 — Ubuntu, Windows and Android",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-10-19T11:14:59Z",
+    "body": "Select text in a PDF, tap **Find meaning**, and Google results open in a panel inside the reader. Close it and your scroll position is exactly where you left it.\n\nNo AI, no API keys, no backend, no account, no telemetry.\n\n**The first published release, and the first to cover three platforms with one version number.**\n\n## New: Android\n\n- Touch text selection with drag handles and a magnifier\n- A draggable bottom-sheet search panel on the **system WebView** — nothing like Chromium is bundled, so the APK is ~25 MB against the desktop bundle's ~326 MB\n- Open PDFs from the Android picker or by sharing to the app (`VIEW` / `SEND` intents)\n- Layered system back, edge-to-edge, state restored after the OS kills the app\n- `INTERNET` is the only permission — no storage permissions at all\n\n## Ubuntu and Windows\n\nUnchanged in behaviour. The Android work touched no file under `linux/`, `windows/` or `packaging/`. Both are rebuilt from this tag, so the binaries are new even though the behaviour is not.\n\nVerified against the real browser engines: **Linux 10/10, Windows 11/11, Android 11/11** conformance.\n\n## Install\n\n**Ubuntu** (26.04; `Depends` are derived from the build machine's libraries)\n```bash\nsudo apt install ./dndreader_0.3.0-1_amd64.deb\n```\n\n**Windows 10 1809+** — run `DNDReader-0.3.0-setup-x64.exe`. Unsigned, so SmartScreen will warn.\n\n**Android 8.0+** — take `DNDReader-0.3.0-arm64-v8a.apk` for any phone from roughly 2017 on. Use `armeabi-v7a` only for older 32-bit devices, `x86_64` only for emulators. You will need to allow installing from unknown sources.\n\nAll APKs are signed with the release key, certificate SHA-256:\n```\n90:B1:F8:9D:69:CA:9F:26:14:0A:AC:C9:DC:B2:A8:A5:BF:49:43:97:F1:BF:E1:99:A1:26:02:7F:A7:17:D9:36\n```\n\n## Known limitations\n\n- **Android holds a private copy of each document.** Edits to the original will not appear until you open or share it again.\n- **Memory on Android is higher than budgeted** — about 517 MB with a 240-page document open and the search panel alive, against a 300 MB target. Fine on the test device; reported rather than quietly re-baselined.\n- You cannot sign in to Google in the panel — Google blocks sign-in in embedded webviews. Results are signed-out.\n- Text-based PDFs only. No OCR.\n- Not verified: TalkBack, Bluetooth keyboard/mouse/stylus, split screen, Android 13+ on physical hardware, a missing or very old system WebView. See `docs/android-owner-test.md`.\n- Whether Google's terms permit loading Search inside a third-party app panel is **not established** — see `docs/implementation-plan.md` §9.8.\n\n## Checksums (SHA-256)\n\n```\n2c04973edb4c16cab7189a0e99606edac337399e630f9acf9156dd6f7e4635fd  dndreader_0.3.0-1_amd64.deb\n880026ddcb5c39314a8734ab75ef6f9dea5eee9efb180979c568b0f9de594722  DNDReader-0.3.0-setup-x64.exe\n61c26309ab37d4598eb1944b4fe92f65d18f29b985a093be57ba5fd8467e3788  DNDReader-0.3.0-arm64-v8a.apk\n4e215a1c9542fca632761834cda5d85186cd237e4974f9cefd0cd36611d8f5a5  DNDReader-0.3.0-armeabi-v7a.apk\n1771ea8ac498bd275b5a1a53922b2354d9af4e58bfc2b20d3146aa9e809ccb56  DNDReader-0.3.0-x86_64.apk\n```\n",
+    "assets": [
+      {
+        "name": "DNDReader-0.2.0-arm64-v8a.apk",
+        "content_type": "application/vnd.android.package-archive",
+        "state": "uploaded",
+        "size": 24858225,
+        "digest": "sha256:61c26309ab37d4598eb1944b4fe92f65d18f29b985a093be57ba5fd8467e3788",
+        "browser_download_url": "https://github.com/thisisankit27/DNDReader/releases/download/v0.3.0/DNDReader-0.2.0-arm64-v8a.apk"
+      },
+      {
+        "name": "DNDReader-0.3.0-armeabi-v7a.apk",
+        "content_type": "application/vnd.android.package-archive",
+        "state": "uploaded",
+        "size": 19911783,
+        "digest": "sha256:4e215a1c9542fca632761834cda5d85186cd237e4974f9cefd0cd36611d8f5a5",
+        "browser_download_url": "https://github.com/thisisankit27/DNDReader/releases/download/v0.3.0/DNDReader-0.3.0-armeabi-v7a.apk"
+      },
+      {
+        "name": "DNDReader-0.3.0-setup-x64.exe",
+        "content_type": "application/octet-stream",
+        "state": "uploaded",
+        "size": 15556638,
+        "digest": "sha256:880026ddcb5c39314a8734ab75ef6f9dea5eee9efb180979c568b0f9de594722",
+        "browser_download_url": "https://github.com/thisisankit27/DNDReader/releases/download/v0.3.0/DNDReader-0.3.0-setup-x64.exe"
+      },
+      {
+        "name": "DNDReader-0.3.0-x86_64.apk",
+        "content_type": "application/vnd.android.package-archive",
+        "state": "uploaded",
+        "size": 26550514,
+        "digest": "sha256:1771ea8ac498bd275b5a1a53922b2354d9af4e58bfc2b20d3146aa9e809ccb56",
+        "browser_download_url": "https://github.com/thisisankit27/DNDReader/releases/download/v0.3.0/DNDReader-0.3.0-x86_64.apk"
+      },
+      {
+        "name": "dndreader_0.3.0-1_amd64.deb",
+        "content_type": "application/x-debian-package",
+        "state": "uploaded",
+        "size": 341628878,
+        "digest": "sha256:2c04973edb4c16cab7189a0e99606edac337399e630f9acf9156dd6f7e4635fd",
+        "browser_download_url": "https://github.com/thisisankit27/DNDReader/releases/download/v0.3.0/dndreader_0.3.0-1_amd64.deb"
+      }
+    ]
+  }
+]
