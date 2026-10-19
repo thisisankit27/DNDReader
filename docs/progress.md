@@ -1804,3 +1804,121 @@ app launches (the GNOME 50 abort is gone), `aa-status` shows the profile loaded,
 loaded results, and `packaging/linux/verify-sandbox.sh` reported **3 renderers, `seccomp=2`, each in
 its own user namespace — PASS**. This is the first installed build on which the sandbox has been
 confirmed active end to end.
+
+---
+
+## Android port (branch `feat/android`, 2026-10-19, Ubuntu host + Moto G60)
+
+Plan of record: the approved plan for this port (summary below). Rule #1: **no Linux or Windows
+behaviour changes**; shared files change only additively (`android:` flags defaulting to `false`,
+optional constructor parameters, one `Platform.isAndroid` line in `SearchWebView.create()` above the
+existing branches). Every claim is labelled **verified** (how), **read**, or **not verified**, and
+says whether it came from the **device** (Moto G60, Android 12 / API 31, system WebView 149) or the
+**emulator** (`pixel7_api36`, for predictive back, targetSdk-35 edge-to-edge and 16 KB pages).
+
+Owner decisions (answered 2026-10-19): application id `io.github.thisisankit27.dndreader`;
+**minSdk 26**; first distribution = signed APK on GitHub Releases (Play later); **INTERNET** is the
+only permission. Open and *not* decided here: §9.8 (whether Google's terms permit Search inside a
+third-party app panel), the Play route, the display name (currently "DNDReader").
+
+### Budgets (set before measuring; a miss is reported, never re-baselined)
+
+| Metric | Budget |
+|---|---|
+| Release size | arm64 split APK ≤ 25 MB (universal reported for information) |
+| Cold start | ≤ 1.2 s `am start -W` TotalTime, G60, release, median of 10 |
+| Open a 240-page file | first page visible ≤ 2.0 s, copy included |
+| Scroll frame time | 240-page file: p95 ≤ 16 ms, p99 ≤ 32 ms, janky frames ≤ 5 % |
+| Memory | PSS ≤ 300 MB, 240-page file open, WebView alive and hidden |
+
+### Parity table
+
+One row per feature. Disposition is exactly one of **shipped**, **deferred (owner agreed)**,
+**N/A on touch**; "pending" means not yet built and must be gone before the port is closed. The
+Evidence column is filled at the milestone that settles the row.
+
+| # | Feature | Disposition | Evidence |
+|---|---|---|---|
+| 1 | Open a PDF (picker) | pending | |
+| 2 | Open from intent: ACTION_VIEW / ACTION_SEND, cold / warm / second | pending | |
+| 3 | Continuous vertical scroll | pending | |
+| 4 | Pinch zoom | pending | |
+| 5 | Zoom − / + buttons | pending | |
+| 6 | Fit page | pending | |
+| 7 | `page n / N` indicator | pending | |
+| 8 | Editable page-number field | pending | |
+| 9 | Rotate ±90° | pending | |
+| 10 | Scrollbars | pending | |
+| 11 | Outline / table-of-contents panel | pending | |
+| 12 | "No selectable text" state | pending | |
+| 13 | Open-failure state | pending | |
+| 14 | Full screen (immersive) | pending | |
+| 15 | Touch text selection (long-press word, drag handles, magnifier) | pending | |
+| 16 | Debounced `SelectionActionController` + "Find meaning" pill | pending | |
+| 17 | Pill edge flip / clamp (`pill_placement.dart`, reused) | pending | |
+| 18 | Context menu: Copy / Find meaning / Select all | pending | |
+| 19 | Double-tap to select a word (vs touch double-tap = zoom) | pending | |
+| 20 | Five colour-blind-safe highlight colours | pending | |
+| 21 | Search panel: query text, Back, Open in browser, Close | pending | |
+| 22 | Panel states: loading / loaded / failed + Retry / unavailable | pending | |
+| 23 | Google cookie-consent hint | pending | |
+| 24 | Scroll position identical after the panel closes | pending | |
+| 25 | One long-lived browser per run, hidden not disposed | pending | |
+| 26 | Bottom sheet with snap points (phone) / side panel (tablet breakpoint) | pending | |
+| 27 | Memory: theme mode | pending | |
+| 28 | Memory: zoom | pending | |
+| 29 | Memory: last document and page | pending | |
+| 30 | Memory: 8 recents | pending | |
+| 31 | Memory: highlight choice | pending | |
+| 32 | Header row | pending | |
+| 33 | Overflow menu | pending | |
+| 34 | Keyboard-shortcuts dialog (phone wording; Bluetooth keyboard) | pending | |
+| 35 | About dialog (honest Android engine line) | pending | |
+| 36 | Layered system back (menu → sheet → panel history → outline → selection → full screen → exit) | pending | |
+| 37 | Predictive back (API 33+) | pending | |
+| 38 | Edge-to-edge insets, status / navigation bar styling in both themes | pending | |
+| 39 | Keep screen on while reading | pending | |
+| 40 | Material You colour does not override selection highlights | pending | |
+| 41 | Lifecycle: background with panel open, process death, restoration | pending | |
+| 42 | Privacy: WebView data cleared at each run start and on detach | pending | |
+| 43 | TalkBack on pill, panel, page field | pending | |
+| 44 | Large font scale, remove animations, dark mode toggled with panel open | pending | |
+| 45 | Rotation mid-search, split screen, cutouts, sheet vs soft keyboard | pending | |
+
+### M1 — Bootstrap (observed 2026-10-19)
+
+- `flutter create --platforms=android --org io.github.thisisankit27 --project-name dndreader .`
+  **clobbered four things, restored immediately** (`git status` / `git diff` right after): it
+  re-resolved eight transitive packages in `pubspec.lock` (reverted, so Linux/Windows resolve exactly
+  as before), dropped the linux/windows entries from `.metadata` (restored, android entry added),
+  added an `android/**` exclude to `analysis_options.yaml`, and added `test/widget_test.dart` (deleted;
+  it would have broken the 174-test count). `README.md`, `.gitignore` and `lib/` were not touched.
+  **One of those is kept and unavoidable:** the Flutter tool re-adds the `android/**` analyzer exclude
+  on every build that sees an `android/` directory, so it is committed (analysis of Linux/Windows
+  sources is unaffected; `android/` contains no Dart).
+- **JDK: verified.** The `java` on PATH is Android Studio's JBR 25.0.2; the template's Gradle 9.3.1 /
+  AGP 9.1.0 / Kotlin 2.4.0 build a debug APK on it with no JDK override (only the
+  restricted-method warning from Gradle's native-platform jar). 582 s for the first build, mostly
+  downloads.
+- **SDK components Gradle installed itself, into the user's SDK (no `sudo`):** NDK 28.2.13676358
+  (r28c), Android SDK Platform 35, CMake 3.22.1. So the NDK was needed after all (the build asked for
+  it); nothing for the owner to run.
+- **minSdk 26** set explicitly in `android/app/build.gradle.kts`. pdfium's own floor did not exceed it
+  (the build and install succeeded); **not verified:** pdfium's declared floor read from the binary.
+- **Native artifacts, verified by listing the debug APK:** `libflutter.so`, `libpdfium.so` (6.4 MB,
+  arm64), `libdartjni.so`, `libdatastore_shared_counter.so`, and the debug-only
+  `libVkLayer_khronos_validation.so`. **No CEF, no WebView2, no `webview_cef`/`webview_flutter_windows`
+  native code.** `search_web_view.dart` imports both desktop adapters unconditionally and they
+  compile as dead Dart on Android; the conditional-import escape hatch in the plan was **not
+  needed**. (Dart cost of the dead adapters is measured with the release build in M6.)
+- **Manifest:** `INTERNET` only; label "DNDReader"; no storage permission.
+- **Device:** installed on the Moto G60 and launched: the empty state renders. Debug cold start
+  `am start -W` TotalTime 5.8 s (**debug build, not a budget measurement**). Observed for M5, not
+  yet fixed: the header draws under the status bar (edge-to-edge), and the empty state still shows
+  the "Ctrl+O" hint on a phone.
+- Operational note: after the Gradle build the adb server had to be restarted
+  (`adb kill-server; adb start-server`) before the phone showed up again.
+- **Rule #1 proof:** `dart format --set-exit-if-changed .` clean; `flutter analyze` no issues;
+  `flutter test` **174 passed**; `flutter build linux --release` succeeded; `git diff main` touches
+  no file under `linux/`, `windows/`, `packaging/`, or the two platform workflows. Shared-file diff:
+  `.metadata` (android entry), `analysis_options.yaml` (the one-line exclude above).
