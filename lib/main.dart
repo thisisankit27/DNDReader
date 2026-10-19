@@ -7,6 +7,7 @@ import 'app.dart';
 import 'dev/dev_capture.dart';
 import 'features/search/search_profile.dart';
 import 'services/app_shutdown.dart';
+import 'services/document_access.dart';
 import 'services/settings_service.dart';
 
 Future<void> main(List<String> args) async {
@@ -15,9 +16,16 @@ Future<void> main(List<String> args) async {
   // window is destroyed; see services/app_shutdown.dart.
   AppShutdown.install();
   final settings = await SettingsService.load();
+  // Null off Android, where documents are plain files and nothing changes.
+  final documents = DocumentAccess.create();
   runApp(
     DevCapture(
-      child: DndReaderApp(settings: settings, initialPath: _pdfFromArgs(args)),
+      child: DndReaderApp(
+        settings: settings,
+        initialPath:
+            _pdfFromArgs(args) ?? (await documents?.initialDocument())?.path,
+        documents: documents,
+      ),
     ),
   );
   // After the first frame is scheduled and off the UI isolate: clears a search

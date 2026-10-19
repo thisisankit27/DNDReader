@@ -7,6 +7,7 @@ import 'package:pdfrx/pdfrx.dart';
 
 import '../../dev/dev_harness.dart';
 import '../../dev/selection_debug.dart';
+import '../../services/document_access.dart';
 import '../../services/pdf_picker.dart';
 import '../../services/window_service.dart';
 import 'document_scrollbars.dart';
@@ -36,6 +37,7 @@ class ReaderScreen extends StatefulWidget {
     this.actionController,
     this.searchSession,
     this.settings,
+    this.documents,
   });
 
   /// A document to open at start-up (command-line argument / "Open With").
@@ -55,6 +57,9 @@ class ReaderScreen extends StatefulWidget {
 
   /// Persisted preferences; an in-memory service when null (tests).
   final SettingsService? settings;
+
+  /// Where documents come from where they are not plain files (Android); null on desktop.
+  final DocumentAccess? documents;
 
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
@@ -96,6 +101,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   /// Closing the panel or finishing an edit returns focus here.
   final FocusNode _readerFocus = FocusNode(debugLabel: 'reader');
 
+  StreamSubscription<DocumentEvent>? _documentsSub;
   int? _initialPage;
   Timer? _persistTimer;
   double? _persistedZoom;
@@ -123,10 +129,34 @@ class _ReaderScreenState extends State<ReaderScreen> {
       _trackDocument(_path!);
     }
     _controller.addListener(_onViewerTransform);
+    _documentsSub = widget.documents?.incoming.listen(_onIncomingDocument);
+  }
+
+  /// A document that arrived while running (a second intent), or one that failed to import.
+  void _onIncomingDocument(DocumentEvent event) {
+    if (!mounted) return;
+    final path = event.path;
+    if (path != null) {
+      _openPath(path);
+    } else {
+      _showNotice(event.error ?? 'Couldn’t open that file.');
+    }
+  }
+
+  void _showNotice(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _trackDocument(String path) {
     _settings.addRecent(path);
+    // Stored copies nothing refers to any more are removed (Android only).
+    final last = _settings.settings.lastDocument;
+    unawaited(
+      widget.documents?.prune([..._settings.settings.recents, path, ?last]) ??
+          Future<void>.value(),
+    );
   }
 
   /// Debounced persistence of page and zoom.
@@ -233,6 +263,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _contextMenuOpen.dispose();
     _readerFocus.dispose();
     _persistTimer?.cancel();
+    unawaited(_documentsSub?.cancel());
     _controller.removeListener(_onViewerTransform);
     if (widget.actionController == null) _action.dispose();
     if (widget.searchSession == null) _search.dispose();
@@ -249,7 +280,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
   int? get _headerPageCount => _path == null || _failed ? null : _pageCount;
 
   Future<void> _openPicker() async {
-    final picked = await widget.pickPdf();
+    final String? picked;
+    try {
+      picked = await (widget.documents?.pick ?? widget.pickPdf)();
+    } on DocumentImportException catch (e) {
+      if (mounted) _showNotice(e.message);
+      return;
+    }
     if (picked == null || !mounted) return;
     _openPath(picked);
   }
@@ -456,6 +493,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
         child: Scaffold(
           body: Column(
             children: [
+              // Keeps the header clear of a status bar / cutout the system draws over the app
+              // (edge-to-edge on Android). Zero on desktop, where nothing is drawn over the window.
+              SizedBox(height: MediaQuery.paddingOf(context).top),
+              if (widget.documents != null)
+                ValueListenableBuilder<bool>(
+                  valueListenable: widget.documents!.importing,
+                  builder: (context, importing, _) => SizedBox(
+                    height: 2,
+                    child: importing ? const LinearProgressIndicator() : null,
+                  ),
+                ),
               ReaderHeader(
                 title: _title,
                 pageNumber: _pageNumber,

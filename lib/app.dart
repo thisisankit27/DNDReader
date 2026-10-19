@@ -1,17 +1,26 @@
 import 'package:flutter/material.dart';
 
 import 'features/reader/reader_screen.dart';
+import 'services/document_access.dart';
 import 'services/settings_service.dart';
 import 'theme/app_theme.dart';
 
 /// Root widget: theme (system / light / dark, remembered) and the reader shell.
 class DndReaderApp extends StatefulWidget {
-  const DndReaderApp({super.key, this.initialPath, this.settings});
+  const DndReaderApp({
+    super.key,
+    this.initialPath,
+    this.settings,
+    this.documents,
+  });
 
   final String? initialPath;
 
   /// Null in tests that don't care about persistence (an in-memory service is used).
   final SettingsService? settings;
+
+  /// Where documents come from on Android; null elsewhere.
+  final DocumentAccess? documents;
 
   @override
   State<DndReaderApp> createState() => _DndReaderAppState();
@@ -42,6 +51,7 @@ class _DndReaderAppState extends State<DndReaderApp> {
         home: ReaderScreen(
           initialPath: widget.initialPath,
           settings: _settings,
+          documents: widget.documents,
         ),
       ),
     );

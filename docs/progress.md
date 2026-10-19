@@ -1839,8 +1839,8 @@ Evidence column is filled at the milestone that settles the row.
 
 | # | Feature | Disposition | Evidence |
 |---|---|---|---|
-| 1 | Open a PDF (picker) | pending | |
-| 2 | Open from intent: ACTION_VIEW / ACTION_SEND, cold / warm / second | pending | |
+| 1 | Open a PDF (picker) | shipped | M3: system picker (ACTION_OPEN_DOCUMENT), copy to private storage; device |
+| 2 | Open from intent: ACTION_VIEW / ACTION_SEND, cold / warm / second | shipped | M3: all five paths observed on the device (debug build) |
 | 3 | Continuous vertical scroll | pending | |
 | 4 | Pinch zoom | pending | |
 | 5 | Zoom − / + buttons | pending | |
@@ -1850,8 +1850,8 @@ Evidence column is filled at the milestone that settles the row.
 | 9 | Rotate ±90° | pending | |
 | 10 | Scrollbars | pending | |
 | 11 | Outline / table-of-contents panel | pending | |
-| 12 | "No selectable text" state | pending | |
-| 13 | Open-failure state | pending | |
+| 12 | "No selectable text" state | shipped | M3: same as desktop (no pill, nothing selectable; there is no separate message on desktop either); device |
+| 13 | Open-failure state | shipped | M3: 0-byte, non-PDF, truncated, password-protected all reach the existing state; device |
 | 14 | Full screen (immersive) | pending | |
 | 15 | Touch text selection (long-press word, drag handles, magnifier) | shipped | M2: observed on the G60 (device) |
 | 16 | Debounced `SelectionActionController` + "Find meaning" pill | pending | |
@@ -1867,8 +1867,8 @@ Evidence column is filled at the milestone that settles the row.
 | 26 | Bottom sheet with snap points (phone) / side panel (tablet breakpoint) | pending | |
 | 27 | Memory: theme mode | pending | |
 | 28 | Memory: zoom | pending | |
-| 29 | Memory: last document and page | pending | |
-| 30 | Memory: 8 recents | pending | |
+| 29 | Memory: last document and page | shipped | M3: force-stop and relaunch restored page 3 of 3; device |
+| 30 | Memory: 8 recents | shipped | M3: stored copies follow the recents list (see prune); device |
 | 31 | Memory: highlight choice | pending | |
 | 32 | Header row | pending | |
 | 33 | Overflow menu | pending | |
@@ -1988,3 +1988,85 @@ Observed, not pass/fail:
 `sendevent` returns *Permission denied*, so pinch stays for the owner test; anchor correctness under
 zoom was verified through the controller instead, which is the same transform path); rotation (M5);
 RTL and CJK text (no such fixture); selection on a scanned, no-text-layer page (M3/M5 fixtures).
+
+### M3 — Document access (observed 2026-10-19)
+
+**Design (decided and implemented): copy every document into app-private storage; the reader still
+sees a plain `String path`.** `MainActivity` / `DocumentImporter` stream the `content://` document through
+`ContentResolver` into `filesDir/documents/<sha256 of the bytes>/<sanitised name>.pdf`. Why: `file_picker`
+hands back a *cache* path the system may evict (breaking "reopen last document"); intent URIs from Gmail/Drive
+are often one-shot grants with no persistable permission; a copy treats picker, ACTION_VIEW and ACTION_SEND
+identically; and `File(path).existsSync()`, `PdfDocumentRefFile`, `baseName` and the `lastDocument`/`recents`
+preferences work **unchanged**, so desktop is byte-identical by construction. No storage permission (SAF and
+intents need none): the manifest still declares only INTERNET. New files: `DocumentImporter.kt`,
+`lib/services/document_access.dart`, `lib/services/android_documents.dart`; `file_picker` is not used on
+Android. Only `content://` is accepted; the name is sanitised to one path segment ending in `.pdf`; nothing
+looks inside the file; the 1 GiB cap and `ENOSPC` give "too large" / "not enough storage" messages.
+
+Shared-file edits (all inert when `documents == null`, i.e. on desktop): `main.dart` (reads the launch
+document), `app.dart` and `reader_screen.dart` (optional `documents` parameter, a subscription to incoming
+documents, try/catch around the picker, prune after a document is tracked, a 2 dp import progress strip), and
+a top-inset spacer in `reader_screen.dart` (`MediaQuery.paddingOf(context).top`, zero on desktop) that was needed
+because on this device the system draws the status bar over the header and **swallows touches on it** (the
+header's Open and menu buttons were unreachable until the spacer was added).
+
+**Observed on the Moto G60, debug build, via `adb shell am start` against a debug-only test provider
+(`TestDocsProvider`, in `src/debug` only):**
+
+- **Cold ACTION_VIEW:** the document was copied and shown; one folder, named by its SHA-256.
+- **Warm ACTION_VIEW** (app backgrounded with HOME): the task came to the front and opened the new
+  document (`onNewIntent`).
+- **Second ACTION_SEND while a document is open:** replaced the open document, no crash, no leftover
+  state; one folder per distinct document.
+- **The same attachment under fresh URIs** (`prose.pdf?x=1`, then `?x=2`, which is what Gmail/Drive
+  do): both landed in the **same** folder as the first import (`7a602ea6…`): no duplicate copy, no
+  duplicate recent.
+- **Permission revoked** (`SecurityException` from the provider) and **file gone**
+  (`FileNotFoundException`): the open document stayed open and a snackbar said "DNDReader no longer has
+  access to that file." / "That file is no longer available." No crash, nothing stored.
+- **Cloud file that must download first** (a provider that takes 3 s): the import completed and the
+  document opened. **Not verified:** that the progress strip is visible during the wait; it sits at the
+  very top edge and was not distinguishable in the screenshot (to be re-checked in M5 when the strip is
+  placed below the status bar).
+- **0-byte, a text file renamed `.pdf`, a truncated PDF, a password-protected PDF:** each is imported and
+  reaches the existing open-failure state ("This file couldn't be opened … isn't a readable PDF, or it is
+  protected."). There is no password prompt (there is none on desktop either).
+- **Scanned PDF (image only, generated locally with Ghostscript):** opens and renders; `pagetext` reports
+  0 characters; long-press shows only "Select all" (no text to select), and no pill. Same behaviour as
+  desktop.
+- **System picker (DocumentsUI), profile build:** "Open" → pick → copied; a file named
+  `Picker Test (1).pdf` kept its name (spaces, parentheses) and, being the same bytes as an earlier
+  import, **replaced that folder's file name** (latest display name wins; the folder key is the content).
+- **Restart restores the document and page:** `goto 3`, force-stop, relaunch from the launcher showed
+  page 3 of 3 of the same stored document.
+- **Prune, on the device:** with the recents list full, copies that fell out of it were removed. A
+  planted orphan folder (64 hex characters, backdated) was deleted; a freshly created orphan was kept (age
+  guard, 60 s); a folder whose name is not a SHA-256 was kept; the documents still in recents were kept.
+  `decidePrune` is a pure function with a test per refusal (name, in-flight import, symlink, not a
+  directory, unresolved, outside the root, referenced, too new); the on-device behaviour matched it.
+
+**Accepted limitations (also for the README / owner test):** (1) a copy is a *snapshot*: edits to the
+original never appear in it, unlike Linux/Windows which read the file live; re-picking or re-sharing the
+file refreshes it. (2) Up to eight recents plus the open document stay on the device as private copies until
+they leave the list or the app is uninstalled. (3) A recent whose file the app has pruned just disappears
+from the list (the existing `existsSync()` filter). (4) Launch-intent handling skips re-delivery to a
+re-created activity (`savedInstanceState != null`), so process death restores the saved document and page
+instead of resetting to page 1; **observed in M5 with "Don't keep activities", not yet here.**
+
+**A debug-build-only crash, recorded:** launching DocumentsUI from the **debug** build killed the app with
+a SIGSEGV on the raster thread in `libflutter.so` (Adreno 618, Impeller/Vulkan; the debug APK bundles
+`libVkLayer_khronos_validation.so`, which a profile or release build does not). The **profile** build did
+the same picker round trip with no crash (pid unchanged). Treated as a debug-validation-layer artefact; it
+**must be re-checked on a release build in M6** (picker round trip and backgrounding), and if it
+reproduces there it is an Impeller backend issue to escalate, not to ignore.
+
+Tests: 25 new (`test/android_documents_test.dart`: key extraction, every `decidePrune` refusal, error
+messages, the channel round trips, buffering of a second intent, prune never running while an import is in
+flight; `test/widget/documents_test.dart`: picker failure, document access preferred over the desktop
+picker, failed intent shows its reason, second intent opens and prunes, progress strip, and no change with
+no document access). **174 → 199** tests, all passing.
+
+**Rule #1 proof:** `dart format --set-exit-if-changed .` clean; `flutter analyze` no issues; `flutter test`
+199 passed (174 existing + 25 new, none changed); `flutter build linux --release` succeeded; `git diff main`
+on `linux/ windows/ packaging/` and the two platform workflows is empty. Shared `lib/` diff:
+`app.dart` (+12/−1), `main.dart` (+10/−1), `reader_screen.dart` (+50/−1), each justified above.

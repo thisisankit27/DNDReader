@@ -4,4 +4,11 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <application>
+        <!-- Debug-only test document provider (see TestDocsProvider.kt). -->
+        <provider
+            android:name=".TestDocsProvider"
+            android:authorities="${applicationId}.testdocs"
+            android:exported="true"/>
+    </application>
 </manifest>
