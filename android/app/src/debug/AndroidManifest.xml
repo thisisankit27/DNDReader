@@ -4,7 +4,7 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
-    <application>
+    <application android:networkSecurityConfig="@xml/network_security_config">
         <!-- Debug-only test document provider (see TestDocsProvider.kt). -->
         <provider
             android:name=".TestDocsProvider"

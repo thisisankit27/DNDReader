@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.webkit.WebView
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -40,6 +41,16 @@ class MainActivity : FlutterActivity() {
         importer = DocumentImporter(applicationContext)
         val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         channel = ch
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dndreader/webview")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "version") {
+                    // The provider can be absent or mid-update; the About dialog says so rather than guessing.
+                    val pkg = try { WebView.getCurrentWebViewPackage() } catch (e: Exception) { null }
+                    result.success(pkg?.let { "${it.packageName} ${it.versionName}" })
+                } else {
+                    result.notImplemented()
+                }
+            }
         ch.setMethodCallHandler { call, result ->
             when (call.method) {
                 "pick" -> startPick(result)

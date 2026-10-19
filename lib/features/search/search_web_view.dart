@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'search_web_view_desktop.dart';
+import 'search_web_view_mobile.dart';
 import 'search_web_view_windows.dart';
 
 /// The embedded browser could not be started on this system, and starting it
@@ -55,6 +56,7 @@ abstract class SearchWebView {
   /// not on the operating system, so both packages are compiled everywhere but
   /// only the matching one is ever constructed.
   factory SearchWebView.create() {
+    if (Platform.isAndroid) return MobileSearchWebView();
     if (Platform.isWindows) return Webview2SearchWebView();
     if (Platform.isLinux || Platform.isMacOS) return CefSearchWebView();
     return _UnsupportedSearchWebView();

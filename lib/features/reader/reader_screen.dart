@@ -24,6 +24,8 @@ import 'selection_anchor.dart';
 import 'selection_pill.dart';
 import '../search/embedded_browser_info.dart';
 import '../search/search_panel.dart';
+import '../search/search_presentation.dart';
+import '../search/search_sheet.dart';
 import '../search/search_session.dart';
 import '../../services/path_names.dart';
 import '../../services/search_url.dart';
@@ -38,6 +40,7 @@ class ReaderScreen extends StatefulWidget {
     this.searchSession,
     this.settings,
     this.documents,
+    this.searchPresentation = SearchPresentation.sidePanel,
   });
 
   /// A document to open at start-up (command-line argument / "Open With").
@@ -60,6 +63,9 @@ class ReaderScreen extends StatefulWidget {
 
   /// Where documents come from where they are not plain files (Android); null on desktop.
   final DocumentAccess? documents;
+
+  /// Side panel (desktop) or, on phone-width windows, a bottom sheet (Android).
+  final SearchPresentation searchPresentation;
 
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
@@ -102,6 +108,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final FocusNode _readerFocus = FocusNode(debugLabel: 'reader');
 
   StreamSubscription<DocumentEvent>? _documentsSub;
+
+  /// Resting height of the search sheet, as a fraction of the reading area.
+  double _sheetFraction = SearchSheet.snapFractions.first;
   int? _initialPage;
   Timer? _persistTimer;
   double? _persistedZoom;
@@ -555,12 +564,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           final leftInset = hasDocument && _outlineVisible
                               ? OutlinePanel.width.clamp(0.0, maxWidth * 0.8)
                               : 0.0;
-                          final rightInset = _search.visible
+                          final sheet = widget.searchPresentation.usesSheet(
+                            maxWidth,
+                          );
+                          final rightInset = _search.visible && !sheet
                               ? SearchPanel.widthFor(maxWidth)
+                              : 0.0;
+                          // The sheet covers the bottom of the page; its height becomes scrollable
+                          // room so the selected text can be panned clear of it.
+                          final bottomInset = _search.visible && sheet
+                              ? constraints.maxHeight * _sheetFraction
                               : 0.0;
                           final insets = EdgeInsets.only(
                             left: leftInset,
                             right: rightInset,
+                            bottom: bottomInset,
                           );
                           _syncInsets(insets);
                           return Stack(
@@ -618,8 +636,29 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                     onClose: _toggleOutline,
                                   ),
                                 ),
+                              // Phone-width windows: a draggable bottom sheet instead.
+                              if (sheet &&
+                                  (_search.webView != null || _search.visible))
+                                Positioned.fill(
+                                  child: Offstage(
+                                    offstage: !_search.visible,
+                                    child: ExcludeFocus(
+                                      excluding: !_search.visible,
+                                      child: SearchSheet(
+                                        session: _search,
+                                        onClose: _search.close,
+                                        availableHeight: constraints.maxHeight,
+                                        fraction: _sheetFraction,
+                                        onSettled: (fraction) => setState(
+                                          () => _sheetFraction = fraction,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               // No browser exists until the first search.
-                              if (_search.webView != null || _search.visible)
+                              if (!sheet &&
+                                  (_search.webView != null || _search.visible))
                                 Positioned(
                                   right: 0,
                                   top: 0,

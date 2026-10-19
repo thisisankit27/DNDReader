@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'features/reader/reader_screen.dart';
+import 'features/search/search_presentation.dart';
 import 'services/document_access.dart';
 import 'services/settings_service.dart';
 import 'theme/app_theme.dart';
@@ -12,6 +13,7 @@ class DndReaderApp extends StatefulWidget {
     this.initialPath,
     this.settings,
     this.documents,
+    this.searchPresentation = SearchPresentation.sidePanel,
   });
 
   final String? initialPath;
@@ -21,6 +23,9 @@ class DndReaderApp extends StatefulWidget {
 
   /// Where documents come from on Android; null elsewhere.
   final DocumentAccess? documents;
+
+  /// How the search panel is presented; the side panel unless the platform says otherwise.
+  final SearchPresentation searchPresentation;
 
   @override
   State<DndReaderApp> createState() => _DndReaderAppState();
@@ -52,6 +57,7 @@ class _DndReaderAppState extends State<DndReaderApp> {
           initialPath: widget.initialPath,
           settings: _settings,
           documents: widget.documents,
+          searchPresentation: widget.searchPresentation,
         ),
       ),
     );

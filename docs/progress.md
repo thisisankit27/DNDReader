@@ -1859,12 +1859,12 @@ Evidence column is filled at the milestone that settles the row.
 | 18 | Context menu: Copy / Find meaning / Select all | pending | |
 | 19 | Double-tap to select a word (vs touch double-tap = zoom) | shipped | M2: double-tap selects the word and does not zoom (existing `onGeneralTap`); zoom is pinch + the −/+ buttons |
 | 20 | Five colour-blind-safe highlight colours | pending | |
-| 21 | Search panel: query text, Back, Open in browser, Close | pending | |
+| 21 | Search panel: query text, Back, Open in browser, Close | shipped | M4: in the sheet on the device (profile build) |
 | 22 | Panel states: loading / loaded / failed + Retry / unavailable | pending | |
 | 23 | Google cookie-consent hint | pending | |
-| 24 | Scroll position identical after the panel closes | pending | |
-| 25 | One long-lived browser per run, hidden not disposed | pending | |
-| 26 | Bottom sheet with snap points (phone) / side panel (tablet breakpoint) | pending | |
+| 24 | Scroll position identical after the panel closes | shipped | M4: 0 differing pixels in the document area, before opening vs after closing, at the top and mid-document; device |
+| 25 | One long-lived browser per run, hidden not disposed | shipped | M4: Offstage + one session-owned adapter; widget test; Layer 2 shares one engine; device |
+| 26 | Bottom sheet with snap points (phone) / side panel (tablet breakpoint) | shipped | M4: sheet verified on the device; the ≥600 dp side-panel branch is widget-tested only, **not verified on a device** |
 | 27 | Memory: theme mode | pending | |
 | 28 | Memory: zoom | pending | |
 | 29 | Memory: last document and page | shipped | M3: force-stop and relaunch restored page 3 of 3; device |
@@ -2070,3 +2070,72 @@ no document access). **174 → 199** tests, all passing.
 199 passed (174 existing + 25 new, none changed); `flutter build linux --release` succeeded; `git diff main`
 on `linux/ windows/ packaging/` and the two platform workflows is empty. Shared `lib/` diff:
 `app.dart` (+12/−1), `main.dart` (+10/−1), `reader_screen.dart` (+50/−1), each justified above.
+
+### M4 — Mobile adapter and bottom sheet (observed 2026-10-19)
+
+New: `lib/features/search/search_web_view_mobile.dart` (`MobileSearchWebView`, named *mobile* so iOS reuses it),
+`search_sheet.dart`, `search_presentation.dart`, `android_webview_info.dart`; dependency `webview_flutter ^4.14.1`
+(+ `webview_flutter_android`, imported directly). Shared edits, each additive: `search_web_view.dart` (+2 lines: the import
+and `if (Platform.isAndroid) return MobileSearchWebView();` **above** the Windows and Linux/macOS lines, which are untouched);
+`android:` flags defaulting to `false` on `embeddedBrowserLines`, `SearchPanel.unavailableBody`, `SearchPanel.consentNote`
+(call sites pass `Platform.isAndroid`; in `embeddedBrowserDescription` the Android branch sits above the existing Windows
+check); `reader_screen.dart`/`app.dart`/`main.dart` get an optional `searchPresentation` (default side panel) and the
+existing right-panel `Positioned` gains `!sheet &&`; the sheet is a new sibling. `pill_placement.dart`,
+`normalizeQuery`, `FailedLoadEndFilter` and `search_session.dart` are **not edited**. `search_web_view_desktop.dart` and
+`_windows.dart` were not opened for editing.
+
+**Does Android's WebView emit a trailing load-end after a failed load? Yes (device, observed with a raw
+`NavigationDelegate` probe, since deleted).** For a connection-refused main frame: `started`, then `error`
+(`connect`, -6, `net::ERR_CONNECTION_REFUSED`), then **8 ms later `finished` for the same URL**, then `urlchange`. So the
+shared `FailedLoadEndFilter` is reused as is. A navigation superseded by a newer one produced a `finished` for the
+abandoned URL and **no error** (so the WebView2 `_navigationFailed` bug cannot occur here). A WebView that is never
+attached to a widget loads and reports normally (the suite never mounts `widget`).
+
+**Layer 2 conformance on the Moto G60 (the existing, unchanged suite): 11 of 11 pass**, with one shared engine for the whole
+file, as on Linux and Windows. First run: 10 of 11; the history test timed out because the adapter had de-duplicated
+`onHistoryChanged`, so a repeated `true` never reached the test; the de-duplication was removed (the session already
+ignores a repeat). **Negative control:** with the filter bypassed the suite fails ("an unresolvable host reports
+onLoadError, not onLoadEnd" saw a load-end for the failed URL), so the suite does exercise the rule. The debug build
+carries a network-security-config allowing cleartext to `127.0.0.1`, `localhost` and `*.invalid` (and nothing else); with
+`.invalid` allowed the "unresolvable host" test is a genuine DNS failure (before that it was
+`net::ERR_CLEARTEXT_NOT_PERMITTED`, still an error but not DNS). Profile and release builds have no such config.
+Capabilities declared: `reportsHistory: true`, `releaseFocusIsNoop: true`.
+
+**Bottom sheet, observed on the device (profile build, system WebView 149.0.7827.160):** long-press a word, tap the pill,
+the sheet rises to half height with Google's mobile results (AI Overview, tabs) for the selected word, a drag handle,
+and Back / Open in browser / Close. The document is overlaid and is never resized; the sheet's height is added as
+scrollable room at the bottom. Closing it left the document area **pixel-identical** (0 of ~2.2 million pixels differ)
+both at the top of the page and mid-document (page 2, selection kept). Search worked on the first try, signed out;
+Google served the mobile layout (the comparable-to-Linux question: same Chromium major, same results page).
+Dragging the handle to resize, fling-to-close and rotation were **not exercised on the device here** (the snap logic is
+unit-tested as a pure function; the drag itself is M5).
+
+**Verified by tests (new, 21 in `test/search/mobile_search_test.dart`):** the navigation policy
+(`decideNavigation`: only http(s)/about load; tel/mailto/sms go to the system; intent/market/file/content/javascript/data/blob
+and garbage are dropped; a `.pdf` link opens outside the panel), adapter no-ops before start and idempotent dispose,
+capabilities, snap points and presentation breakpoint, the Android wording, that the existing platforms' wording is
+unchanged, and that a phone-width window shows the sheet while a tablet width and the desktop default keep the side
+panel and closing hides the one browser rather than disposing it. **Not verified:** a missing, disabled or very old system
+WebView (this device always has a current one; `start()` turns a creation failure into `SearchUnavailableException`, by
+reading the code, not by running it); permission prompts and JS dialogs being denied/dismissed (deny-by-default is read from
+the plugin source; no page was driven to request one); `tel:`/`mailto:`/Play links, a download, a CAPTCHA, captive portal,
+offline/airplane behaviour and the 20 s timeout on the device (M5).
+
+**Privacy decision for Android (implemented, partly verified):** the system WebView has no in-memory or incognito
+profile: it writes `app_webview/` inside this app's private storage. `MobileSearchWebView.start()` clears cookies
+(`WebViewCookieManager`), the HTTP cache and web storage **before the first load of every run** (so a run that was killed,
+which gets no chance to clean up, is covered at the next start), and again, best effort, on `AppLifecycleState.detached`
+and on dispose. Verified: the calls run without error on the device. **Not verified:** that nothing from the previous run
+remains on disk afterwards (the contents of `app_webview/` were not inspected). What the README may claim for Android
+(and no more): search data lives in this app's private storage, not shared with other apps; it is cleared at the next start,
+not kept in memory; a Google cookie choice lasts until the app is closed and reopened; and the WebView is Android's, patched
+by Android/Play, not by this project.
+
+**Defects noticed, for M5:** the header title is squeezed to nothing beside the page field on a phone; a Close tooltip
+reading "Close (Esc)" and Ctrl hints are desktop wording; the sheet vs the soft keyboard is untested.
+
+**Rule #1 proof:** `dart format --set-exit-if-changed .` clean; `flutter analyze` no issues; `flutter test` **220 passed**
+(199 + 21 new; no existing test changed); `flutter build linux --release` succeeded with `webview_flutter` added;
+`git diff main` on `linux/ windows/ packaging/` and the two platform workflows is empty. `pubspec.lock` diff is additive
+only (webview_flutter, _android, _platform_interface, _wkwebview); a local `pub get` rewrote the `webview_cef` entry to the
+local path override, and it was restored to the git pin each time.

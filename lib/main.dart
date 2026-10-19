@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'app.dart';
 import 'dev/dev_capture.dart';
 import 'features/search/search_profile.dart';
+import 'features/search/search_presentation.dart';
 import 'services/app_shutdown.dart';
 import 'services/document_access.dart';
 import 'services/settings_service.dart';
@@ -25,6 +26,7 @@ Future<void> main(List<String> args) async {
         initialPath:
             _pdfFromArgs(args) ?? (await documents?.initialDocument())?.path,
         documents: documents,
+        searchPresentation: SearchPresentation.forPlatform(),
       ),
     ),
   );
