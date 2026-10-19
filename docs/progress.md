@@ -1853,11 +1853,11 @@ Evidence column is filled at the milestone that settles the row.
 | 12 | "No selectable text" state | pending | |
 | 13 | Open-failure state | pending | |
 | 14 | Full screen (immersive) | pending | |
-| 15 | Touch text selection (long-press word, drag handles, magnifier) | pending | |
+| 15 | Touch text selection (long-press word, drag handles, magnifier) | shipped | M2: observed on the G60 (device) |
 | 16 | Debounced `SelectionActionController` + "Find meaning" pill | pending | |
 | 17 | Pill edge flip / clamp (`pill_placement.dart`, reused) | pending | |
 | 18 | Context menu: Copy / Find meaning / Select all | pending | |
-| 19 | Double-tap to select a word (vs touch double-tap = zoom) | pending | |
+| 19 | Double-tap to select a word (vs touch double-tap = zoom) | shipped | M2: double-tap selects the word and does not zoom (existing `onGeneralTap`); zoom is pinch + the −/+ buttons |
 | 20 | Five colour-blind-safe highlight colours | pending | |
 | 21 | Search panel: query text, Back, Open in browser, Close | pending | |
 | 22 | Panel states: loading / loaded / failed + Retry / unavailable | pending | |
@@ -1922,3 +1922,69 @@ Evidence column is filled at the milestone that settles the row.
   `flutter test` **174 passed**; `flutter build linux --release` succeeded; `git diff main` touches
   no file under `linux/`, `windows/`, `packaging/`, or the two platform workflows. Shared-file diff:
   `.metadata` (android entry), `analysis_options.yaml` (the one-line exclude above).
+
+### M2 — pdfrx touch-selection gates, on the device (observed 2026-10-19)
+
+**Method.** Debug build with the existing dev flags (`DNDREADER_DEBUG_SELECTION`, `DNDREADER_DEV_HARNESS`),
+documents pushed to the app's private files dir, harness commands written with `adb run-as`. Touch
+was injected with `adb shell input` (a real touch stream into the system, not Flutter-synthesised);
+text and anchor readings came from the existing readout and `anchor`/`pill` harness commands.
+Fixtures: the repo's `prose.pdf`, plus the 19-page *Shared MIME-info Database* spec from the
+system documentation directory (owner-approved; **not** committed). **Source of every claim below:
+the Moto G60 (device), Android 12, WebView 149.** Not tried on the emulator.
+
+**Verdict: all three §5.1.1 gates hold with touch. No architectural finding.**
+
+Observed, not pass/fail:
+
+- **Long-press selects a word.** Long-press (800 ms) on "Version" selected exactly "Version";
+  `getSelectedText()` returned `"Version"`, range `p1[130,137)`. Two **drag handles** (blue teardrops)
+  appeared at the selection ends.
+- **Handle drag extends the selection across lines and paragraphs.** Dragging the end handle selected
+  `"Version\nThis is version 0.21 … 2 October 2018.\n1.2. What is this spec?\nMany programs … types of fil"`
+  (212 UTF-16 units): lines and paragraphs arrive joined with `\n`. Dragging the start handle moved the
+  start to "this spec?…" (`p1#249 → p1#341`).
+- **Magnifier works and was run for the first time.** While a handle is held, a large rounded lens
+  appears above the finger showing the glyphs under it ("it is **this** s…") with the selection tint,
+  and tracks the finger. It is wide (~⅔ of the screen) and covers the header text above the selection
+  while shown.
+- **Text fidelity, same PDFium as Linux.** `scanhyphen` on `prose.pdf` and on the 19-page spec: U+0002 = 0,
+  hyphen+newline = 0 (these documents contain neither); the wrap hyphens in `prose.pdf` arrive as
+  U+2010 immediately followed by a line break in the structured text ("silico‐\nvolcano",
+  "electro‐\nencephalographically"), exactly as `normalizeQuery`'s regexes expect, ligatures
+  ("efficient", "affluent") come through as plain letters, and the raw text uses `\r\n` where
+  the structured text uses `\n`. `normalizeQuery` was **not touched**; no difference from the
+  desktop observations to report. Select-all on the 19-page spec selected 19 page ranges, 36,609 UTF-16 units,
+  without delay (the 300-character cap is `normalizeQuery`'s, tested on desktop).
+- **Selection survives our pill; pdfrx's own toolbar stays suppressed; no Android native text
+  toolbar.** Tapping the real "Find meaning" pill opened the panel and the selection was still held
+  (`hasSelection` true, same range). At no point did pdfrx's built-in menu or an Android system text
+  toolbar appear (Flutter draws its own selection UI, so there is nothing for the native toolbar to
+  fight).
+- **Context menu on long-press over an existing selection.** Our own card appears (Copy / Find meaning;
+  "Select all" is omitted when everything is already selected) and the pill steps aside while it is
+  open. **It still shows "Ctrl+C" / "Ctrl+E" hint text on a phone** (M5).
+- **Pan-drag scrolls, it does not select.** A 600 px swipe over body text scrolled the page and created
+  no selection. (A first swipe issued before the document finished loading did nothing; not a defect.)
+- **Double-tap.** Two taps ~100–200 ms apart on a word selected it and did **not** zoom. So the
+  gesture conflict resolves itself: double-tap = select word (the existing `onGeneralTap`), zoom = pinch
+  and the −/+ buttons. Kept deliberately.
+- **Anchor under zoom and fling (gate 3).** At zoom 2.5 the anchor rectangle sat on the right glyphs and the
+  pill 8 dp below it. After a 500 px fling the anchor moved from top 429.9 dp to 131.1 dp and the pill
+  followed exactly (pill top = anchor bottom + 8). Select-all with the end of the selection off-screen
+  pins the pill at the top-left, overlapping selected text (the documented degenerate case).
+
+**Defects found for M5 (touch ergonomics), recorded now, not yet fixed:**
+
+1. **The pill lands on the lower selection handle.** The pill's 8 dp gap is shorter than the handle,
+   so the pill covers (and intercepts touches meant for) the end handle: a touch on the end handle's
+   position hit the pill, not the handle (observed). Fix without forking `placePill`: pass a larger
+   `gap` on touch.
+2. The pill and the context menu show **Ctrl+E / Ctrl+C hints** on a phone.
+3. The magnifier lens is large and covers the header while a handle is dragged (pdfrx parameter, to be
+   tuned or accepted).
+
+**Not verified in M2:** two-finger pinch (the touch device node cannot be written by `adb shell`:
+`sendevent` returns *Permission denied*, so pinch stays for the owner test; anchor correctness under
+zoom was verified through the controller instead, which is the same transform path); rotation (M5);
+RTL and CJK text (no such fixture); selection on a scanned, no-text-layer page (M3/M5 fixtures).
