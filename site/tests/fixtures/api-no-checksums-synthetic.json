@@ -1,0 +1,52 @@
+[
+  {
+    "tag_name": "v0.3.0",
+    "name": "DNDReader 0.3.0 — Ubuntu, Windows and Android",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-10-19T11:14:59Z",
+    "body": "No checksums here.",
+    "assets": [
+      {
+        "name": "DNDReader-0.3.0-arm64-v8a.apk",
+        "content_type": "application/vnd.android.package-archive",
+        "state": "uploaded",
+        "size": 24858225,
+        "digest": null,
+        "browser_download_url": "https://github.com/thisisankit27/DNDReader/releases/download/v0.3.0/DNDReader-0.3.0-arm64-v8a.apk"
+      },
+      {
+        "name": "DNDReader-0.3.0-armeabi-v7a.apk",
+        "content_type": "application/vnd.android.package-archive",
+        "state": "uploaded",
+        "size": 19911783,
+        "digest": null,
+        "browser_download_url": "https://github.com/thisisankit27/DNDReader/releases/download/v0.3.0/DNDReader-0.3.0-armeabi-v7a.apk"
+      },
+      {
+        "name": "DNDReader-0.3.0-setup-x64.exe",
+        "content_type": "application/octet-stream",
+        "state": "uploaded",
+        "size": 15556638,
+        "digest": null,
+        "browser_download_url": "https://github.com/thisisankit27/DNDReader/releases/download/v0.3.0/DNDReader-0.3.0-setup-x64.exe"
+      },
+      {
+        "name": "DNDReader-0.3.0-x86_64.apk",
+        "content_type": "application/vnd.android.package-archive",
+        "state": "uploaded",
+        "size": 26550514,
+        "digest": null,
+        "browser_download_url": "https://github.com/thisisankit27/DNDReader/releases/download/v0.3.0/DNDReader-0.3.0-x86_64.apk"
+      },
+      {
+        "name": "dndreader_0.3.0-1_amd64.deb",
+        "content_type": "application/x-debian-package",
+        "state": "uploaded",
+        "size": 341628878,
+        "digest": null,
+        "browser_download_url": "https://github.com/thisisankit27/DNDReader/releases/download/v0.3.0/dndreader_0.3.0-1_amd64.deb"
+      }
+    ]
+  }
+]

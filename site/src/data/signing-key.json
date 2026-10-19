@@ -1,0 +1,6 @@
+{
+  "android": {
+    "sha256": "90:B1:F8:9D:69:CA:9F:26:14:0A:AC:C9:DC:B2:A8:A5:BF:49:43:97:F1:BF:E1:99:A1:26:02:7F:A7:17:D9:36",
+    "note": "SHA-256 of the Android release signing certificate. A property of the key, not of a release, so it is pinned once, here. scripts/check-signing-pin.mjs fails if this disagrees with EXPECTED_CERT_SHA256 in .github/workflows/android-release.yml or with the fingerprint printed in the latest release notes. A change is an integrity event to investigate, never a value to patch."
+  }
+}

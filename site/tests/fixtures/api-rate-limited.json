@@ -1,0 +1,9 @@
+{
+  "__fail": {
+    "status": 403,
+    "headers": {
+      "x-ratelimit-remaining": "0",
+      "x-ratelimit-reset": "4102444800"
+    }
+  }
+}

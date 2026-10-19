@@ -1,0 +1,30 @@
+{
+  "name": "dndreader-site",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Landing and download site for DNDReader (GitHub Pages).",
+  "scripts": {
+    "releases": "node scripts/fetch-releases.mjs",
+    "check:pin": "node scripts/check-signing-pin.mjs",
+    "dev": "npm run releases && astro dev",
+    "build": "npm run releases && npm run check:pin && astro build",
+    "build:only": "astro build",
+    "preview": "astro preview",
+    "test:unit": "node --test \"tests/unit/*.test.mjs\"",
+    "test:e2e": "playwright test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "3.7.4",
+    "@fontsource-variable/atkinson-hyperlegible-mono": "5.3.0",
+    "@fontsource-variable/atkinson-hyperlegible-next": "5.3.0",
+    "astro": "7.4.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1"
+  }
+}
