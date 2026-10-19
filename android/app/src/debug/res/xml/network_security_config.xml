@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DEBUG BUILDS ONLY (src/debug): lets the Layer 2 conformance suite (integration_test) load pages
+     served by a loopback HttpServer inside the test process. Android blocks cleartext HTTP by default.
+     Absent from profile and release builds, which therefore keep the default (no cleartext at all). -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <!-- RFC 6761 never-resolving names, so the suite's "unresolvable host" is a DNS failure, not the
+             cleartext policy refusing first. -->
+        <domain includeSubdomains="true">invalid</domain>
+    </domain-config>
+</network-security-config>

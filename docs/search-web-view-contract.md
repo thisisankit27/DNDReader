@@ -157,11 +157,30 @@ Declared values:
 |---|---|---|
 | `CefSearchWebView` | `false` | `true` |
 | `Webview2SearchWebView` | `true` | `false` |
+| `MobileSearchWebView` (Android; iOS later) | `true` | `true` |
 | `_UnsupportedSearchWebView` | `false` | `true` (arbitrary — never exercised, see below) |
 
 `_UnsupportedSearchWebView` is a deliberate always-unavailable stand-in for platforms with no adapter
-yet (mobile, pre-M7); its `start()` always throws `SearchUnavailableException`, so the conformance
+yet (iOS; Android has `MobileSearchWebView`); its `start()` always throws `SearchUnavailableException`, so the conformance
 suite is never run against it.
+
+## Android (`MobileSearchWebView`) — observed on a Moto G60, system WebView 149
+
+- **The trailing load-end exists on Android too.** For a refused connection the WebView reports
+  `onWebResourceError` (`net::ERR_CONNECTION_REFUSED`, main frame) and then, ~8 ms later, `onPageFinished` for the
+  *same* failed URL. `MobileSearchWebView` therefore reuses `FailedLoadEndFilter` unchanged and clears it in
+  `loadUrl`/`goBack`/`reload` (clause 3). Negative control: with the filter bypassed the Layer 2 suite's
+  "unresolvable host reports onLoadError, not onLoadEnd" fails.
+- A navigation superseded by a newer one yields a `finished` for the abandoned URL and **no error**, so the
+  WebView2 `_navigationFailed` defect cannot occur.
+- `onUrlChange` arrives *after* `onPageFinished` for a failed load; `onHistoryChanged` is reported on every URL
+  change and page finish (the session de-duplicates).
+- Layer 2 needs cleartext HTTP to loopback; Android blocks cleartext by default, so the **debug build only** carries
+  a network-security-config for `127.0.0.1`, `localhost` and `*.invalid`. Profile and release builds have none.
+- `releaseFocus` is a no-op (focus belongs to Flutter's tree); main-frame navigations to anything but http(s)/about are
+  never loaded (`decideNavigation`); permission requests are denied and JS dialogs are dismissed unseen.
+- Privacy: the system WebView keeps no in-memory profile. Cookies, cache and web storage are cleared before the first
+  load of every run and best-effort on detach/dispose (see `docs/progress.md`, Android M4).
 
 ## `dispose()`
 

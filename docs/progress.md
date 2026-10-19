@@ -1804,3 +1804,481 @@ app launches (the GNOME 50 abort is gone), `aa-status` shows the profile loaded,
 loaded results, and `packaging/linux/verify-sandbox.sh` reported **3 renderers, `seccomp=2`, each in
 its own user namespace — PASS**. This is the first installed build on which the sandbox has been
 confirmed active end to end.
+
+---
+
+## Android port (branch `feat/android`, 2026-10-19, Ubuntu host + Moto G60)
+
+Plan of record: the approved plan for this port (summary below). Rule #1: **no Linux or Windows
+behaviour changes**; shared files change only additively (`android:` flags defaulting to `false`,
+optional constructor parameters, one `Platform.isAndroid` line in `SearchWebView.create()` above the
+existing branches). Every claim is labelled **verified** (how), **read**, or **not verified**, and
+says whether it came from the **device** (Moto G60, Android 12 / API 31, system WebView 149) or the
+**emulator** (`pixel7_api36`, for predictive back, targetSdk-35 edge-to-edge and 16 KB pages).
+
+Owner decisions (answered 2026-10-19): application id `io.github.thisisankit27.dndreader`;
+**minSdk 26**; first distribution = signed APK on GitHub Releases (Play later); **INTERNET** is the
+only permission. Open and *not* decided here: §9.8 (whether Google's terms permit Search inside a
+third-party app panel), the Play route, the display name (currently "DNDReader").
+
+### Budgets (set before measuring; a miss is reported, never re-baselined)
+
+| Metric | Budget |
+|---|---|
+| Release size | arm64 split APK ≤ 25 MB (universal reported for information) |
+| Cold start | ≤ 1.2 s `am start -W` TotalTime, G60, release, median of 10 |
+| Open a 240-page file | first page visible ≤ 2.0 s, copy included |
+| Scroll frame time | 240-page file: p95 ≤ 16 ms, p99 ≤ 32 ms, janky frames ≤ 5 % |
+| Memory | PSS ≤ 300 MB, 240-page file open, WebView alive and hidden |
+
+### Parity table
+
+One row per feature. Disposition is exactly one of **shipped**, **deferred (owner agreed)**,
+**N/A on touch**; "pending" means not yet built and must be gone before the port is closed. The
+Evidence column is filled at the milestone that settles the row.
+
+| # | Feature | Disposition | Evidence |
+|---|---|---|---|
+| 1 | Open a PDF (picker) | shipped | M3: system picker (ACTION_OPEN_DOCUMENT), copy to private storage; device |
+| 2 | Open from intent: ACTION_VIEW / ACTION_SEND, cold / warm / second | shipped | M3: all five paths observed on the device (debug build) |
+| 3 | Continuous vertical scroll | shipped | M2/M5: swipe and fling on the device |
+| 4 | Pinch zoom | shipped | pdfrx's own gesture, unchanged; **not driven on the device** (the shell cannot inject two-finger touch): in `docs/android-owner-test.md`. Zoom via the − / + buttons and via the controller was observed |
+| 5 | Zoom − / + buttons | shipped | M5: two taps on + zoomed in; device |
+| 6 | Fit page | shipped | M5/M6: new "Fit page" menu item (desktop is Ctrl+0 only) took a zoomed-in view back to the whole page; device |
+| 7 | `page n / N` indicator | shipped | M5: follows scrolling; device |
+| 8 | Editable page-number field | shipped | M5: typed 5 + Enter went to page 5; numeric keypad with ✓; the document did not reflow when the keyboard opened; device |
+| 9 | Rotate ±90° | shipped | M5: menu → Rotate page turned the pages; device. Phone offers clockwise only; counter-clockwise stays Ctrl+Shift+R |
+| 10 | Scrollbars | shipped | right-edge scrollbar visible and moving throughout; device |
+| 11 | Outline / table-of-contents panel | shipped | M5: expandable tree on `outline.pdf`; header button opens/closes it; Back closes it; Ctrl+T through the engine key pipeline; device |
+| 12 | "No selectable text" state | shipped | M3: same as desktop (no pill, nothing selectable; there is no separate message on desktop either); device |
+| 13 | Open-failure state | shipped | M3: 0-byte, non-PDF, truncated, password-protected all reach the existing state; device |
+| 14 | Full screen (immersive) | shipped | M5: menu → Full screen hid the bars; Back leaves it; device |
+| 15 | Touch text selection (long-press word, drag handles, magnifier) | shipped | M2: observed on the G60 (device) |
+| 16 | Debounced `SelectionActionController` + "Find meaning" pill | shipped | M2/M5; device |
+| 17 | Pill edge flip / clamp (`pill_placement.dart`, reused) | shipped | M5: reused unchanged with a larger `gap` on touch (34 dp, clears the handles); device. Flip above near the bottom edge: pure function tests only, not seen on the device |
+| 18 | Context menu: Copy / Find meaning / Select all | shipped | M2/M5: 48 dp rows, no Ctrl hints on touch; device |
+| 19 | Double-tap to select a word (vs touch double-tap = zoom) | shipped | M2: double-tap selects the word and does not zoom (existing `onGeneralTap`); zoom is pinch + the −/+ buttons |
+| 20 | Five colour-blind-safe highlight colours | shipped | unchanged code (theme-driven, no Material You dynamic colour in the app); sky blue observed in light and dark; the other four were **not** selected on the device |
+| 21 | Search panel: query text, Back, Open in browser, Close | shipped | M4: in the sheet on the device (profile build) |
+| 22 | Panel states: loading / loaded / failed + Retry / unavailable | shipped | M6: loading and loaded (Google results), failed with Retry and Open in browser (Wi-Fi off), Retry after restoring Wi-Fi loaded the page; device. "Unavailable" (no usable system WebView) is unit-tested wording only; **not reproducible on this device** |
+| 23 | Google cookie-consent hint | shipped | Android wording added and unit-tested; Google showed **no** consent page on the device or emulator, so the hint itself was not observed |
+| 24 | Scroll position identical after the panel closes | shipped | M4: 0 differing pixels in the document area, before opening vs after closing, at the top and mid-document; device |
+| 25 | One long-lived browser per run, hidden not disposed | shipped | M4: Offstage + one session-owned adapter; widget test; Layer 2 shares one engine; device |
+| 26 | Bottom sheet with snap points (phone) / side panel (tablet breakpoint) | shipped | M4: sheet verified on the device; the ≥600 dp side-panel branch is widget-tested only, **not verified on a device** |
+| 27 | Memory: theme mode | shipped | unchanged `SettingsService` (unit-tested); the in-app theme choice was not exercised on the device |
+| 28 | Memory: zoom | shipped | M5: zoom 1.6 came back after `am kill` and relaunch; device |
+| 29 | Memory: last document and page | shipped | M3: force-stop and relaunch restored page 3 of 3; device |
+| 30 | Memory: 8 recents | shipped | M3: stored copies follow the recents list (see prune); device |
+| 31 | Memory: highlight choice | shipped | unchanged `SettingsService` (unit-tested); the choice was not exercised on the device |
+| 32 | Header row | shipped | M5: phone layout (title readable; rotate/fit/full screen in the menu); device |
+| 33 | Overflow menu | shipped | M5; device |
+| 34 | Keyboard-shortcuts dialog (phone wording; Bluetooth keyboard) | shipped | M5: "Gestures and shortcuts" (gestures first, then "With a keyboard attached"); shortcut bindings stay active and work through the engine key pipeline; a real Bluetooth keyboard was **not** tested |
+| 35 | About dialog (honest Android engine line) | shipped | M6: shows "Android System WebView com.google.android.webview 149.0.7827.160, provided and updated by Android, not bundled with or patched by DNDReader" and the privacy line; device |
+| 36 | Layered system back (menu → sheet → panel history → outline → selection → full screen → exit) | shipped | M5: each layer observed on the device; see M5 |
+| 37 | Predictive back (API 33+) | shipped | M5: `enableOnBackInvokedCallback` set; layering verified on the API 36 emulator with edge-swipe back gestures; the animation itself was not captured |
+| 38 | Edge-to-edge insets, status / navigation bar styling in both themes | shipped | M5: device (API 31, system draws under the status bar) and API 36 emulator (enforced edge-to-edge at targetSdk 36); icons contrast in light and dark |
+| 39 | Keep screen on while reading | shipped | M5: `FLAG_KEEP_SCREEN_ON` acquired a WindowManager wake lock attributed to the app's uid with a document open; device |
+| 40 | Material You colour does not override selection highlights | shipped | by construction (no dynamic-colour package; static themes + `SelectionHighlight`); observed sky blue in both themes |
+| 41 | Lifecycle: background with panel open, process death, restoration | shipped | M5: `am kill` of a backgrounded app and relaunch restored document, page, zoom and the open sheet with its query; hidden WebView survived trim-memory levels; device |
+| 42 | Privacy: WebView data cleared at each run start and on detach | shipped | M6: the previous run's `app_webview/` (Cookies, IndexedDB, Local Storage, Service Worker; 4.7 MB) was gone right after launch, before any search; device. Detach clearing: best-effort, not observable (Android rarely delivers it) |
+| 43 | TalkBack on pill, panel, page field | shipped | labels and actions read from the accessibility tree and tested; **TalkBack itself was not run**: in `docs/android-owner-test.md` |
+| 44 | Large font scale, remove animations, dark mode toggled with panel open | shipped | M5: font scale 2.0 (title truncates, no overflow), dark↔light with the panel open (app re-themes; the loaded Google page does not until it reloads); the sheet's snap animation honours `disableAnimations`; the system animation scale itself was not changed on the device |
+| 45 | Rotation mid-search, split screen, cutouts, sheet vs soft keyboard | shipped | M5: rotation observed both ways (sheet ↔ docked side panel, same page kept); keyboard rides above the sheet and the document does not move; the top safe-area (cutout) is honoured in full screen; split screen **not** tested |
+
+### M1 — Bootstrap (observed 2026-10-19)
+
+- `flutter create --platforms=android --org io.github.thisisankit27 --project-name dndreader .`
+  **clobbered four things, restored immediately** (`git status` / `git diff` right after): it
+  re-resolved eight transitive packages in `pubspec.lock` (reverted, so Linux/Windows resolve exactly
+  as before), dropped the linux/windows entries from `.metadata` (restored, android entry added),
+  added an `android/**` exclude to `analysis_options.yaml`, and added `test/widget_test.dart` (deleted;
+  it would have broken the 174-test count). `README.md`, `.gitignore` and `lib/` were not touched.
+  **One of those is kept and unavoidable:** the Flutter tool re-adds the `android/**` analyzer exclude
+  on every build that sees an `android/` directory, so it is committed (analysis of Linux/Windows
+  sources is unaffected; `android/` contains no Dart).
+- **JDK: verified.** The `java` on PATH is Android Studio's JBR 25.0.2; the template's Gradle 9.3.1 /
+  AGP 9.1.0 / Kotlin 2.4.0 build a debug APK on it with no JDK override (only the
+  restricted-method warning from Gradle's native-platform jar). 582 s for the first build, mostly
+  downloads.
+- **SDK components Gradle installed itself, into the user's SDK (no `sudo`):** NDK 28.2.13676358
+  (r28c), Android SDK Platform 35, CMake 3.22.1. So the NDK was needed after all (the build asked for
+  it); nothing for the owner to run.
+- **minSdk 26** set explicitly in `android/app/build.gradle.kts`. pdfium's own floor did not exceed it
+  (the build and install succeeded); **not verified:** pdfium's declared floor read from the binary.
+- **Native artifacts, verified by listing the debug APK:** `libflutter.so`, `libpdfium.so` (6.4 MB,
+  arm64), `libdartjni.so`, `libdatastore_shared_counter.so`, and the debug-only
+  `libVkLayer_khronos_validation.so`. **No CEF, no WebView2, no `webview_cef`/`webview_flutter_windows`
+  native code.** `search_web_view.dart` imports both desktop adapters unconditionally and they
+  compile as dead Dart on Android; the conditional-import escape hatch in the plan was **not
+  needed**. (Dart cost of the dead adapters is measured with the release build in M6.)
+- **Manifest:** `INTERNET` only; label "DNDReader"; no storage permission.
+- **Device:** installed on the Moto G60 and launched: the empty state renders. Debug cold start
+  `am start -W` TotalTime 5.8 s (**debug build, not a budget measurement**). Observed for M5, not
+  yet fixed: the header draws under the status bar (edge-to-edge), and the empty state still shows
+  the "Ctrl+O" hint on a phone.
+- Operational note: after the Gradle build the adb server had to be restarted
+  (`adb kill-server; adb start-server`) before the phone showed up again.
+- **Rule #1 proof:** `dart format --set-exit-if-changed .` clean; `flutter analyze` no issues;
+  `flutter test` **174 passed**; `flutter build linux --release` succeeded; `git diff main` touches
+  no file under `linux/`, `windows/`, `packaging/`, or the two platform workflows. Shared-file diff:
+  `.metadata` (android entry), `analysis_options.yaml` (the one-line exclude above).
+
+### M2 — pdfrx touch-selection gates, on the device (observed 2026-10-19)
+
+**Method.** Debug build with the existing dev flags (`DNDREADER_DEBUG_SELECTION`, `DNDREADER_DEV_HARNESS`),
+documents pushed to the app's private files dir, harness commands written with `adb run-as`. Touch
+was injected with `adb shell input` (a real touch stream into the system, not Flutter-synthesised);
+text and anchor readings came from the existing readout and `anchor`/`pill` harness commands.
+Fixtures: the repo's `prose.pdf`, plus the 19-page *Shared MIME-info Database* spec from the
+system documentation directory (owner-approved; **not** committed). **Source of every claim below:
+the Moto G60 (device), Android 12, WebView 149.** Not tried on the emulator.
+
+**Verdict: all three §5.1.1 gates hold with touch. No architectural finding.**
+
+Observed, not pass/fail:
+
+- **Long-press selects a word.** Long-press (800 ms) on "Version" selected exactly "Version";
+  `getSelectedText()` returned `"Version"`, range `p1[130,137)`. Two **drag handles** (blue teardrops)
+  appeared at the selection ends.
+- **Handle drag extends the selection across lines and paragraphs.** Dragging the end handle selected
+  `"Version\nThis is version 0.21 … 2 October 2018.\n1.2. What is this spec?\nMany programs … types of fil"`
+  (212 UTF-16 units): lines and paragraphs arrive joined with `\n`. Dragging the start handle moved the
+  start to "this spec?…" (`p1#249 → p1#341`).
+- **Magnifier works and was run for the first time.** While a handle is held, a large rounded lens
+  appears above the finger showing the glyphs under it ("it is **this** s…") with the selection tint,
+  and tracks the finger. It is wide (~⅔ of the screen) and covers the header text above the selection
+  while shown.
+- **Text fidelity, same PDFium as Linux.** `scanhyphen` on `prose.pdf` and on the 19-page spec: U+0002 = 0,
+  hyphen+newline = 0 (these documents contain neither); the wrap hyphens in `prose.pdf` arrive as
+  U+2010 immediately followed by a line break in the structured text ("silico‐\nvolcano",
+  "electro‐\nencephalographically"), exactly as `normalizeQuery`'s regexes expect, ligatures
+  ("efficient", "affluent") come through as plain letters, and the raw text uses `\r\n` where
+  the structured text uses `\n`. `normalizeQuery` was **not touched**; no difference from the
+  desktop observations to report. Select-all on the 19-page spec selected 19 page ranges, 36,609 UTF-16 units,
+  without delay (the 300-character cap is `normalizeQuery`'s, tested on desktop).
+- **Selection survives our pill; pdfrx's own toolbar stays suppressed; no Android native text
+  toolbar.** Tapping the real "Find meaning" pill opened the panel and the selection was still held
+  (`hasSelection` true, same range). At no point did pdfrx's built-in menu or an Android system text
+  toolbar appear (Flutter draws its own selection UI, so there is nothing for the native toolbar to
+  fight).
+- **Context menu on long-press over an existing selection.** Our own card appears (Copy / Find meaning;
+  "Select all" is omitted when everything is already selected) and the pill steps aside while it is
+  open. **It still shows "Ctrl+C" / "Ctrl+E" hint text on a phone** (M5).
+- **Pan-drag scrolls, it does not select.** A 600 px swipe over body text scrolled the page and created
+  no selection. (A first swipe issued before the document finished loading did nothing; not a defect.)
+- **Double-tap.** Two taps ~100–200 ms apart on a word selected it and did **not** zoom. So the
+  gesture conflict resolves itself: double-tap = select word (the existing `onGeneralTap`), zoom = pinch
+  and the −/+ buttons. Kept deliberately.
+- **Anchor under zoom and fling (gate 3).** At zoom 2.5 the anchor rectangle sat on the right glyphs and the
+  pill 8 dp below it. After a 500 px fling the anchor moved from top 429.9 dp to 131.1 dp and the pill
+  followed exactly (pill top = anchor bottom + 8). Select-all with the end of the selection off-screen
+  pins the pill at the top-left, overlapping selected text (the documented degenerate case).
+
+**Defects found for M5 (touch ergonomics), recorded now, not yet fixed:**
+
+1. **The pill lands on the lower selection handle.** The pill's 8 dp gap is shorter than the handle,
+   so the pill covers (and intercepts touches meant for) the end handle: a touch on the end handle's
+   position hit the pill, not the handle (observed). Fix without forking `placePill`: pass a larger
+   `gap` on touch.
+2. The pill and the context menu show **Ctrl+E / Ctrl+C hints** on a phone.
+3. The magnifier lens is large and covers the header while a handle is dragged (pdfrx parameter, to be
+   tuned or accepted).
+
+**Not verified in M2:** two-finger pinch (the touch device node cannot be written by `adb shell`:
+`sendevent` returns *Permission denied*, so pinch stays for the owner test; anchor correctness under
+zoom was verified through the controller instead, which is the same transform path); rotation (M5);
+RTL and CJK text (no such fixture); selection on a scanned, no-text-layer page (M3/M5 fixtures).
+
+### M3 — Document access (observed 2026-10-19)
+
+**Design (decided and implemented): copy every document into app-private storage; the reader still
+sees a plain `String path`.** `MainActivity` / `DocumentImporter` stream the `content://` document through
+`ContentResolver` into `filesDir/documents/<sha256 of the bytes>/<sanitised name>.pdf`. Why: `file_picker`
+hands back a *cache* path the system may evict (breaking "reopen last document"); intent URIs from Gmail/Drive
+are often one-shot grants with no persistable permission; a copy treats picker, ACTION_VIEW and ACTION_SEND
+identically; and `File(path).existsSync()`, `PdfDocumentRefFile`, `baseName` and the `lastDocument`/`recents`
+preferences work **unchanged**, so desktop is byte-identical by construction. No storage permission (SAF and
+intents need none): the manifest still declares only INTERNET. New files: `DocumentImporter.kt`,
+`lib/services/document_access.dart`, `lib/services/android_documents.dart`; `file_picker` is not used on
+Android. Only `content://` is accepted; the name is sanitised to one path segment ending in `.pdf`; nothing
+looks inside the file; the 1 GiB cap and `ENOSPC` give "too large" / "not enough storage" messages.
+
+Shared-file edits (all inert when `documents == null`, i.e. on desktop): `main.dart` (reads the launch
+document), `app.dart` and `reader_screen.dart` (optional `documents` parameter, a subscription to incoming
+documents, try/catch around the picker, prune after a document is tracked, a 2 dp import progress strip), and
+a top-inset spacer in `reader_screen.dart` (`MediaQuery.paddingOf(context).top`, zero on desktop) that was needed
+because on this device the system draws the status bar over the header and **swallows touches on it** (the
+header's Open and menu buttons were unreachable until the spacer was added).
+
+**Observed on the Moto G60, debug build, via `adb shell am start` against a debug-only test provider
+(`TestDocsProvider`, in `src/debug` only):**
+
+- **Cold ACTION_VIEW:** the document was copied and shown; one folder, named by its SHA-256.
+- **Warm ACTION_VIEW** (app backgrounded with HOME): the task came to the front and opened the new
+  document (`onNewIntent`).
+- **Second ACTION_SEND while a document is open:** replaced the open document, no crash, no leftover
+  state; one folder per distinct document.
+- **The same attachment under fresh URIs** (`prose.pdf?x=1`, then `?x=2`, which is what Gmail/Drive
+  do): both landed in the **same** folder as the first import (`7a602ea6…`): no duplicate copy, no
+  duplicate recent.
+- **Permission revoked** (`SecurityException` from the provider) and **file gone**
+  (`FileNotFoundException`): the open document stayed open and a snackbar said "DNDReader no longer has
+  access to that file." / "That file is no longer available." No crash, nothing stored.
+- **Cloud file that must download first** (a provider that takes 3 s): the import completed and the
+  document opened. **Not verified:** that the progress strip is visible during the wait; it sits at the
+  very top edge and was not distinguishable in the screenshot (to be re-checked in M5 when the strip is
+  placed below the status bar).
+- **0-byte, a text file renamed `.pdf`, a truncated PDF, a password-protected PDF:** each is imported and
+  reaches the existing open-failure state ("This file couldn't be opened … isn't a readable PDF, or it is
+  protected."). There is no password prompt (there is none on desktop either).
+- **Scanned PDF (image only, generated locally with Ghostscript):** opens and renders; `pagetext` reports
+  0 characters; long-press shows only "Select all" (no text to select), and no pill. Same behaviour as
+  desktop.
+- **System picker (DocumentsUI), profile build:** "Open" → pick → copied; a file named
+  `Picker Test (1).pdf` kept its name (spaces, parentheses) and, being the same bytes as an earlier
+  import, **replaced that folder's file name** (latest display name wins; the folder key is the content).
+- **Restart restores the document and page:** `goto 3`, force-stop, relaunch from the launcher showed
+  page 3 of 3 of the same stored document.
+- **Prune, on the device:** with the recents list full, copies that fell out of it were removed. A
+  planted orphan folder (64 hex characters, backdated) was deleted; a freshly created orphan was kept (age
+  guard, 60 s); a folder whose name is not a SHA-256 was kept; the documents still in recents were kept.
+  `decidePrune` is a pure function with a test per refusal (name, in-flight import, symlink, not a
+  directory, unresolved, outside the root, referenced, too new); the on-device behaviour matched it.
+
+**Accepted limitations (also for the README / owner test):** (1) a copy is a *snapshot*: edits to the
+original never appear in it, unlike Linux/Windows which read the file live; re-picking or re-sharing the
+file refreshes it. (2) Up to eight recents plus the open document stay on the device as private copies until
+they leave the list or the app is uninstalled. (3) A recent whose file the app has pruned just disappears
+from the list (the existing `existsSync()` filter). (4) Launch-intent handling skips re-delivery to a
+re-created activity (`savedInstanceState != null`), so process death restores the saved document and page
+instead of resetting to page 1; **observed in M5 with "Don't keep activities", not yet here.**
+
+**A debug-build-only crash, recorded:** launching DocumentsUI from the **debug** build killed the app with
+a SIGSEGV on the raster thread in `libflutter.so` (Adreno 618, Impeller/Vulkan; the debug APK bundles
+`libVkLayer_khronos_validation.so`, which a profile or release build does not). The **profile** build did
+the same picker round trip with no crash (pid unchanged). Treated as a debug-validation-layer artefact; it
+**must be re-checked on a release build in M6** (picker round trip and backgrounding), and if it
+reproduces there it is an Impeller backend issue to escalate, not to ignore.
+
+Tests: 25 new (`test/android_documents_test.dart`: key extraction, every `decidePrune` refusal, error
+messages, the channel round trips, buffering of a second intent, prune never running while an import is in
+flight; `test/widget/documents_test.dart`: picker failure, document access preferred over the desktop
+picker, failed intent shows its reason, second intent opens and prunes, progress strip, and no change with
+no document access). **174 → 199** tests, all passing.
+
+**Rule #1 proof:** `dart format --set-exit-if-changed .` clean; `flutter analyze` no issues; `flutter test`
+199 passed (174 existing + 25 new, none changed); `flutter build linux --release` succeeded; `git diff main`
+on `linux/ windows/ packaging/` and the two platform workflows is empty. Shared `lib/` diff:
+`app.dart` (+12/−1), `main.dart` (+10/−1), `reader_screen.dart` (+50/−1), each justified above.
+
+### M4 — Mobile adapter and bottom sheet (observed 2026-10-19)
+
+New: `lib/features/search/search_web_view_mobile.dart` (`MobileSearchWebView`, named *mobile* so iOS reuses it),
+`search_sheet.dart`, `search_presentation.dart`, `android_webview_info.dart`; dependency `webview_flutter ^4.14.1`
+(+ `webview_flutter_android`, imported directly). Shared edits, each additive: `search_web_view.dart` (+2 lines: the import
+and `if (Platform.isAndroid) return MobileSearchWebView();` **above** the Windows and Linux/macOS lines, which are untouched);
+`android:` flags defaulting to `false` on `embeddedBrowserLines`, `SearchPanel.unavailableBody`, `SearchPanel.consentNote`
+(call sites pass `Platform.isAndroid`; in `embeddedBrowserDescription` the Android branch sits above the existing Windows
+check); `reader_screen.dart`/`app.dart`/`main.dart` get an optional `searchPresentation` (default side panel) and the
+existing right-panel `Positioned` gains `!sheet &&`; the sheet is a new sibling. `pill_placement.dart`,
+`normalizeQuery`, `FailedLoadEndFilter` and `search_session.dart` are **not edited**. `search_web_view_desktop.dart` and
+`_windows.dart` were not opened for editing.
+
+**Does Android's WebView emit a trailing load-end after a failed load? Yes (device, observed with a raw
+`NavigationDelegate` probe, since deleted).** For a connection-refused main frame: `started`, then `error`
+(`connect`, -6, `net::ERR_CONNECTION_REFUSED`), then **8 ms later `finished` for the same URL**, then `urlchange`. So the
+shared `FailedLoadEndFilter` is reused as is. A navigation superseded by a newer one produced a `finished` for the
+abandoned URL and **no error** (so the WebView2 `_navigationFailed` bug cannot occur here). A WebView that is never
+attached to a widget loads and reports normally (the suite never mounts `widget`).
+
+**Layer 2 conformance on the Moto G60 (the existing, unchanged suite): 11 of 11 pass**, with one shared engine for the whole
+file, as on Linux and Windows. First run: 10 of 11; the history test timed out because the adapter had de-duplicated
+`onHistoryChanged`, so a repeated `true` never reached the test; the de-duplication was removed (the session already
+ignores a repeat). **Negative control:** with the filter bypassed the suite fails ("an unresolvable host reports
+onLoadError, not onLoadEnd" saw a load-end for the failed URL), so the suite does exercise the rule. The debug build
+carries a network-security-config allowing cleartext to `127.0.0.1`, `localhost` and `*.invalid` (and nothing else); with
+`.invalid` allowed the "unresolvable host" test is a genuine DNS failure (before that it was
+`net::ERR_CLEARTEXT_NOT_PERMITTED`, still an error but not DNS). Profile and release builds have no such config.
+Capabilities declared: `reportsHistory: true`, `releaseFocusIsNoop: true`.
+
+**Bottom sheet, observed on the device (profile build, system WebView 149.0.7827.160):** long-press a word, tap the pill,
+the sheet rises to half height with Google's mobile results (AI Overview, tabs) for the selected word, a drag handle,
+and Back / Open in browser / Close. The document is overlaid and is never resized; the sheet's height is added as
+scrollable room at the bottom. Closing it left the document area **pixel-identical** (0 of ~2.2 million pixels differ)
+both at the top of the page and mid-document (page 2, selection kept). Search worked on the first try, signed out;
+Google served the mobile layout (the comparable-to-Linux question: same Chromium major, same results page).
+Dragging the handle to resize, fling-to-close and rotation were **not exercised on the device here** (the snap logic is
+unit-tested as a pure function; the drag itself is M5).
+
+**Verified by tests (new, 21 in `test/search/mobile_search_test.dart`):** the navigation policy
+(`decideNavigation`: only http(s)/about load; tel/mailto/sms go to the system; intent/market/file/content/javascript/data/blob
+and garbage are dropped; a `.pdf` link opens outside the panel), adapter no-ops before start and idempotent dispose,
+capabilities, snap points and presentation breakpoint, the Android wording, that the existing platforms' wording is
+unchanged, and that a phone-width window shows the sheet while a tablet width and the desktop default keep the side
+panel and closing hides the one browser rather than disposing it. **Not verified:** a missing, disabled or very old system
+WebView (this device always has a current one; `start()` turns a creation failure into `SearchUnavailableException`, by
+reading the code, not by running it); permission prompts and JS dialogs being denied/dismissed (deny-by-default is read from
+the plugin source; no page was driven to request one); `tel:`/`mailto:`/Play links, a download, a CAPTCHA, captive portal,
+offline/airplane behaviour and the 20 s timeout on the device (M5).
+
+**Privacy decision for Android (implemented, partly verified):** the system WebView has no in-memory or incognito
+profile: it writes `app_webview/` inside this app's private storage. `MobileSearchWebView.start()` clears cookies
+(`WebViewCookieManager`), the HTTP cache and web storage **before the first load of every run** (so a run that was killed,
+which gets no chance to clean up, is covered at the next start), and again, best effort, on `AppLifecycleState.detached`
+and on dispose. Verified: the calls run without error on the device. **Not verified:** that nothing from the previous run
+remains on disk afterwards (the contents of `app_webview/` were not inspected). What the README may claim for Android
+(and no more): search data lives in this app's private storage, not shared with other apps; it is cleared at the next start,
+not kept in memory; a Google cookie choice lasts until the app is closed and reopened; and the WebView is Android's, patched
+by Android/Play, not by this project.
+
+**Defects noticed, for M5:** the header title is squeezed to nothing beside the page field on a phone; a Close tooltip
+reading "Close (Esc)" and Ctrl hints are desktop wording; the sheet vs the soft keyboard is untested.
+
+**Rule #1 proof:** `dart format --set-exit-if-changed .` clean; `flutter analyze` no issues; `flutter test` **220 passed**
+(199 + 21 new; no existing test changed); `flutter build linux --release` succeeded with `webview_flutter` added;
+`git diff main` on `linux/ windows/ packaging/` and the two platform workflows is empty. `pubspec.lock` diff is additive
+only (webview_flutter, _android, _platform_interface, _wkwebview); a local `pub get` rewrote the `webview_cef` entry to the
+local path override, and it was restored to the git pin each time.
+
+### M5 — Touch ergonomics, system UI, back, lifecycle, accessibility (observed 2026-10-19)
+
+**Shared-file additions (all behind a default-off flag, so desktop is unchanged):** `ReaderScreen`/`ReaderHeader`/`ReaderMenu`/
+`PdfView`/`SelectionPill`/`SearchPanel`/`PageField` take a `touch`/`phone` flag (derived once from `SearchPresentation.touch`); the
+reader gets a `BackScope` (a `PopEntry`, so the widget tree is not re-wrapped), `RestorationMixin` for the panel, a bottom
+safe-area spacer, and `WindowService.setKeepScreenOn`. New files: `back_scope.dart`, `system_bars.dart`. `MainActivity` implements
+the existing `dndreader/window` channel (full screen through `WindowInsetsControllerCompat`, `FLAG_KEEP_SCREEN_ON`), so
+`WindowService` itself needed no Android branch. `enableOnBackInvokedCallback` is set in the manifest.
+
+**Gesture conflict, resolved deliberately:** pan-drag scrolls (observed: no selection starts); long-press selects a word and shows
+handles; double-tap selects a word and does not zoom; zoom is pinch and the −/+ buttons. No `onGeneralTap` change was needed.
+
+**Defects from M2/M4, fixed and re-observed on the device:** the pill no longer lands on the lower handle (34 dp gap, 48 dp
+target, no Ctrl+E text); the header title is readable (rotate and full screen moved to the menu on a phone, plus a "Fit page" item,
+since fit-page is Ctrl+0 only on desktop); the context menu and tooltips lost their desktop shortcut text on touch.
+
+**Back, observed on the device unless noted:** menu open → Back closed the menu; sheet open → Back went back in the panel's own
+history first and closed the sheet when there was none; outline open → closed it; selection held → cleared it; in full screen → left
+it; nothing left → the app left (to the launcher). On the **API 36 emulator** the same layering held with real edge-swipe back
+gestures and `enableOnBackInvokedCallback` set (selection first, then the system left). The ordering differs from the brief's list in
+one place: the sheet's history comes *before* closing it (closing first would make history unreachable).
+
+**System UI:** device (API 31) draws under the status bar; the header spacer fixed touches being swallowed. API 36 emulator
+(targetSdk 36) enforces edge-to-edge: status and navigation bars transparent, header and bottom strip clear of them; icons
+contrast in both themes. A display cutout's inset stays in full screen. Keep-screen-on: with a document open a WindowManager
+`SCREEN_BRIGHT_WAKE_LOCK` attributed to the app's uid was held. No dynamic-colour package is used, so Material You cannot
+override the highlights.
+
+**Lifecycle:** "Don't keep activities" was **not** used: setting `always_finish_activities` through `settings put` has no effect
+on Android 12 (the developer-options toggle calls a binder method); the screenshot after it was identical, including the
+selection, which proved the activity was never recreated. Instead the stronger test was run: background the app with the sheet open
+at page 3, zoom 1.6, **`am kill`**, relaunch from the launcher: the same document at page 3 and zoom 1.6 returned and the sheet reopened
+on the same query (the framework restores it only after a kill, not on a normal launch); the selection is not restored. The
+hidden WebView survived `am send-trim-memory` at MODERATE, LOW and CRITICAL (the next search worked); PSS with the profile build
+and a 19-page document was **362 MB** (see M6 for the budgeted measurement; this is over the 300 MB budget and is reported there).
+
+**Accessibility (TalkBack itself was NOT run; the accessibility tree was read with `uiautomator dump`, and the semantics in widget
+tests):** header buttons carry labels ("Contents", "Zoom out", "Zoom in", "Open PDF", "Menu"); the page field is a labelled group
+("Page number, of 19") with the edit box inside it; the pill is a button labelled "Find meaning of the selected text" (a test found
+it was announced twice, label plus visible text; fixed with `excludeSemantics` on touch); Close is "Close" (no "(Esc)"); the sheet
+handle has increase/decrease actions so a screen reader can resize it. **Not verified:** the order and phrasing TalkBack actually
+speaks, the pill and sheet with TalkBack on, a stylus, a Bluetooth mouse, a real Bluetooth keyboard (key events injected with
+`adb input keycombination` did not reach the shortcut bindings; the engine key pipeline did), and `Ctrl+R` on the device.
+
+**An observation on the Google side:** on the emulator (WebView 133), after a few searches from the same network, Google served its
+"unusual traffic" page (`/sorry/index`, a reCAPTCHA) in the sheet; the panel showed it, Back and Close worked, and no input was
+sent at it. The Moto G60 (WebView 149) did not receive one.
+
+**Emulator:** `pixel7_api36`, API 36, **4 KB pages** (this image is not a 16 KB one), WebView 133. Used for predictive back and
+edge-to-edge only; it was shut down afterwards.
+
+**Defects noticed, not fixed:** a long-press on page background shows the context menu pinned to the top-left corner of the viewer
+(pdfrx's placement; harmless); Android draws a green focus ring around the Flutter view when a key event is injected (now
+disabled with `defaultFocusHighlightEnabled = false`, not re-checked); the loaded Google page keeps its old colour scheme until
+reloaded after a theme change.
+
+**Rule #1 proof:** see M6 (one proof covers M5 and M6 shared changes) and the final report; at M5: `dart format` clean, `flutter analyze` clean,
+`flutter test` **233 passed** (220 + 13 new, none changed), Linux release build and protected-path diff re-run before commit.
+
+### M6 — Tests, CI, budgets (measured 2026-10-19)
+
+**Privacy correction (found while measuring):** after a run that searched, the system WebView's `app_webview/` folder
+(Cookies, IndexedDB, Local Storage, Service Worker; 4.7 MB) was still on disk, and the adapter only cleared it at the *first search
+of the next run*, so "cleared each time the app starts" was an overclaim. `MainActivity` now deletes `app_webview/` and the cache's
+`WebView/` folder once per process in `onCreate`, before any WebView exists (a re-created activity does not repeat it: it
+would delete the folder under a live WebView). **Verified on the device:** installed over a build whose previous run had searched;
+`app_webview/` was 4,733 KB before launch and absent right after launch with no search made. The adapter's own pre-load clearing stays as
+defence in depth. **What the README may claim for Android, and no more:** search-panel data is kept in this app's private storage,
+which other apps cannot read; it is deleted when the app next starts (a killed run is covered the same way); it is not kept in memory;
+a Google cookie choice lasts until the app is closed and reopened; the WebView itself is Android's and is patched by Android/Play. It
+may **not** claim that nothing is written to disk during a run, that data is gone the moment the app is swiped away, or anything
+about Google's own server-side handling.
+
+**Budgets, measured against the numbers set before measuring.** Release = `flutter build apk --release --split-per-abi --obfuscate
+--split-debug-info`, R8 on, icon tree-shaking on (the Material Icons font went from 1,645,184 to 3,092 bytes). Frame timings are from
+a **profile** build (the dev harness is compiled out of release); everything else is the release APK on the Moto G60.
+
+| Metric | Budget | Measured | |
+|---|---|---|---|
+| arm64 release APK | ≤ 25 MB | **24,840,162 bytes (24.84 MB)**; Play download size 11.49 MB (stored libraries compress); armeabi-v7a 19.9 MB, x86_64 26.5 MB, universal not built | **met, by 160 KB** |
+| Cold start (`am start -W`, force-stopped, empty state) | ≤ 1.2 s | 1,033 1,041 1,048 1,051 1,052 1,062 1,072 1,166 1,178 1,245 ms; **median 1,057 ms** (two of ten runs were over 1.2 s) | **met (median)** |
+| Open a 240-page file, copy included | first page ≤ 2.0 s | 29.7 MB image-only 240-page PDF via the real "Open with" intent into the running app: first page visible ≈ **1.3 s** after the tap (polled at ~0.3 s resolution) | **met** |
+| Scroll frame time, 240 pages, 14 flings + 6 slow drags, 16 s | p95 ≤ 16 ms, p99 ≤ 32 ms, janky ≤ 5 % | text PDF (1.0 MB): p95 **14.1**, p99 **22.9**, max 39.9, **3.1 %** janky of 1,374 frames; image PDF (29.7 MB): p95 **12.0**, p99 **17.2**, max 41.6, **1.1 %** janky of 1,393 frames | **met** (profile build) |
+| Memory, 240-page file open, WebView alive and hidden | PSS ≤ 300 MB | empty state **106 MB**; 240-page image PDF open **250 MB**, after scrolling to page 58 **282 MB**; text PDF with the search sheet open **473 MB**; after closing it (WebView hidden) and scrolling **517 MB** (Graphics 304 MB, Native heap 77 MB, Code 24 MB) | **MISSED by ~217 MB** |
+
+**The memory miss is reported, not re-baselined.** Where it comes from: most of the growth is GPU "Graphics" memory (48 MB empty →
+137–170 MB with a document → 274–304 MB once the WebView has rendered), plus the in-process Chromium/WebView native heap. Levers
+that exist and were **not** pulled (each trades smoothness or the "one long-lived browser" requirement, so they are the owner's call):
+a smaller `PdfViewerParams.maxImageBytesCachedOnMemory` on touch (default 100 MB), and destroying the WebView when the panel
+closes (which would also lose the consent choice within a run). The renderer process is separate and not in these figures. The
+budget as stated (300 MB with a live WebView) does not look reachable on this device without one of those.
+
+**16 KB page size, verified on the release APK (not by the device booting):** every native library's LOAD segments are aligned to at least
+`0x4000` (`libpdfium.so` 0x4000, `libdartjni.so` 0x4000, `libdatastore_shared_counter.so` 0x4000, `libflutter.so` and `libapp.so` 0x10000),
+and `zipalign -c -P 16` reports all stored libraries OK. So `pdfrx`'s bundled PDFium (bblanchon `chromium/7811`) is 16 KB compatible. This
+is the ELF/zip check, not a run on a 16 KB device or emulator image (the API 36 image used here has 4 KB pages). **Not verified against current
+Play documentation text** (no network lookup was made); the check applied is the one Android documents (LOAD alignment ≥ 16 KB, uncompressed
+libraries 16 KB zip-aligned).
+
+**Dart cost of the dead desktop adapters: 0 KB.** `--analyze-size` on the arm64 release build lists no `package:webview_cef` and no
+`package:webview_flutter_windows` at all: the AOT compiler folds `Platform.isWindows`/`isLinux` and drops the unreachable adapters. The APK's native
+libraries are `libflutter` 11.7 MB, `libpdfium` 6.4 MB, `libapp` 5.6 MB (Dart AOT: Flutter framework ≈ 3.0 MB of it, `material_ui` 0.27 MB, `dndreader` 0.29 MB,
+`pdfrx` 0.21 MB, `webview_flutter_android` 0.13 MB), `libdartjni` 0.13 MB, plus dex 1.0 MB. **No CEF, no Chromium, no WebView2 code.**
+
+**Release-build crash check:** the debug-only SIGSEGV seen when launching the system picker did **not** occur on the release build: the real
+picker/"Open with" round trip, backgrounding, `am send-trim-memory` and a second document all ran without a crash (pid unchanged).
+
+**New hard gates (`android.yml`, `.github/scripts/android-check-apk.sh`).** *build* job: builds the arm64 release APK and fails unless the size is within
+25,000,000 bytes, the native libraries are exactly `libapp`/`libdartjni`/`libdatastore_shared_counter`/`libflutter`/`libpdfium` (no name matching
+cef/webview2/chromium), every library is 16 KB-aligned, and the permissions are exactly INTERNET plus AndroidX's own
+`<applicationId>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` (a signature-level permission AndroidX declares for the app's broadcast receivers; **not** a
+new capability, but named here because the brief says any new permission must be surfaced). Negative control: a 1 MB budget fails the script. The
+script passed locally on the release APK. *layer2* job: the existing Layer 2 suite on an API 34 x86_64 emulator; **the same command passed 11 of 11 locally on an
+API 36 emulator (WebView 133)**, besides 11 of 11 on the Moto G60. There is no `continue-on-error` in the file. What a green run proves is stated in
+the workflow header; it does not prove touch, jank or memory.
+
+**Dev tooling:** the harness `bench` output gained p95/p99/janky fields and a `frames` command (frame timings while something else drives the UI); both are
+compiled out of release builds and change nothing for desktop users.
+
+**Tests:** 233 passing (the M5 count; M6 added no tests of its own besides the APK gate script).
+
+### M7 — Signing and packaging (2026-10-19)
+
+* **Release signing without a secret in the repo.** `android/app/build.gradle.kts` reads `android/key.properties` (gitignored, with `*.jks`/`*.keystore`);
+  with no keystore a release build is signed with the **debug** key and warns, and with `DNDREADER_REQUIRE_RELEASE_SIGNING=1` a missing keystore **fails the
+  build**. **Verified end to end with a throwaway keystore** created in a scratch directory (not in the repo): the arm64 release APK built, `apksigner verify` passed
+  (APK Signature Scheme v2; minSdk 26 needs no v1), installed on the Moto G60 (after uninstalling the debug-signed build, as the signatures differ) and launched
+  (first launch after install `am start -W` TotalTime 1,462 ms). `git status` showed no key material; the test `key.properties` was deleted afterwards. **Not
+  verified:** a build with the owner's real keystore, and `android-release.yml` itself (it needs the four repository secrets, which do not exist yet; without
+  them it stops at its first step by design).
+* **versionCode** is derived from `pubspec.yaml`'s version: `major*1_000_000 + minor*10_000 + patch*100 + build` (0.2.2+1 -> 20201); Flutter adds 1000 x ABI
+  for split APKs. **Verified in the built APK:** arm64 `versionCode='22201'`, `versionName='0.2.2'`. The build fails if patch or build exceeds 99.
+* **Adaptive icon and label:** a vector adaptive icon (a page of text with a magnifier in the selection sky-blue on deep teal) with a monochrome layer for themed
+  icons; the template's PNG launcher icons were removed (minSdk 26 supports adaptive icons everywhere); label "DNDReader". **Not verified:** how it looks in a
+  launcher on the device (the launcher screen shows personal widgets and was not captured); the shape was checked only in a drawing made from the same coordinates.
+* **Size after M7:** 24,854,117 bytes (24.85 MB) signed arm64 APK, **145,883 bytes under the budget** (the icon resources and the process-start cleanup added about
+  14 KB). The gate script passed on it.
+* **Documents:** `docs/android-release.md` (identity, version scheme, keystore creation, local and CI builds, what the gates enforce, what Play would take, marked
+  as recalled and not verified) and `docs/android-owner-test.md` (install, what was verified, what only the owner can check, a smoke test). README gained the Android
+  status row, prerequisites/build, what leaves the device (per platform), and four Android limitations (snapshot copies, memory, the single permission, theme/PDF
+  links).
+* **Rule #1 proof and shared-file justification:** recorded in the pull request body (the last step of this work).

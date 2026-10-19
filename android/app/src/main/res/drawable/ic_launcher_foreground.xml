@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A page of text with a magnifier over it: read, then look it up. Drawn inside the 66 dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- page -->
+    <path android:fillColor="#FFFFFF" android:pathData="M34,24 L64,24 L76,36 L76,84 L34,84 Z" />
+    <!-- folded corner -->
+    <path android:fillColor="#CFE0E4" android:pathData="M64,24 L64,36 L76,36 Z" />
+    <!-- lines of text -->
+    <path android:fillColor="#0E5A66" android:pathData="M40,42 h22 v3 h-22 z M40,50 h28 v3 h-28 z M40,58 h18 v3 h-18 z" />
+    <!-- magnifier lens (the app's sky-blue selection colour) and handle -->
+    <path
+        android:fillColor="#4056B4E9"
+        android:strokeColor="#56B4E9"
+        android:strokeWidth="5"
+        android:pathData="M64,56 m-13,0 a13,13 0 1,0 26,0 a13,13 0 1,0 -26,0" />
+    <path
+        android:strokeColor="#56B4E9"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:pathData="M73.5,66 L84,76.5" />
+</vector>

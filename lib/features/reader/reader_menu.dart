@@ -17,6 +17,13 @@ class ReaderMenu extends StatelessWidget {
     required this.onOpenRecent,
     required this.onShowShortcuts,
     required this.onShowAbout,
+    this.touch = false,
+    this.onRotate,
+    this.onFitPage,
+    this.onToggleFullscreen,
+    this.fullscreen = false,
+    this.controller,
+    this.onOpenChanged,
   });
 
   final ThemeMode themeMode;
@@ -28,12 +35,28 @@ class ReaderMenu extends StatelessWidget {
   final VoidCallback onShowShortcuts;
   final VoidCallback onShowAbout;
 
+  /// Touch layout: the shortcuts entry is "Gestures and shortcuts".
+  final bool touch;
+
+  /// Rotate / fit page / full screen, offered here when the header has no room for their buttons (phones).
+  final VoidCallback? onRotate;
+  final VoidCallback? onFitPage;
+  final VoidCallback? onToggleFullscreen;
+  final bool fullscreen;
+
+  /// Lets the owner close the menu (system back) and learn when it opens or closes.
+  final MenuController? controller;
+  final ValueChanged<bool>? onOpenChanged;
+
   @override
   Widget build(BuildContext context) {
     // Only documents that still exist are offered.
     final available = recents.where((p) => File(p).existsSync()).toList();
 
     return MenuAnchor(
+      controller: controller,
+      onOpen: () => onOpenChanged?.call(true),
+      onClose: () => onOpenChanged?.call(false),
       builder: (context, controller, _) => IconButton(
         tooltip: 'Menu',
         icon: const Icon(Icons.more_vert),
@@ -107,9 +130,18 @@ class ReaderMenu extends StatelessWidget {
           ],
           child: const Text('Selection colour'),
         ),
+        if (onRotate != null)
+          MenuItemButton(onPressed: onRotate, child: const Text('Rotate page')),
+        if (onFitPage != null)
+          MenuItemButton(onPressed: onFitPage, child: const Text('Fit page')),
+        if (onToggleFullscreen != null)
+          MenuItemButton(
+            onPressed: onToggleFullscreen,
+            child: Text(fullscreen ? 'Exit full screen' : 'Full screen'),
+          ),
         MenuItemButton(
           onPressed: onShowShortcuts,
-          child: const Text('Keyboard shortcuts'),
+          child: Text(touch ? 'Gestures and shortcuts' : 'Keyboard shortcuts'),
         ),
         MenuItemButton(
           onPressed: onShowAbout,
@@ -121,7 +153,17 @@ class ReaderMenu extends StatelessWidget {
 }
 
 /// The keyboard shortcuts dialog.
-Future<void> showShortcutsDialog(BuildContext context) {
+Future<void> showShortcutsDialog(BuildContext context, {bool touch = false}) {
+  const gestures = <(String, String)>[
+    ('Long-press', 'Select a word; drag the handles to extend it'),
+    ('Double-tap', 'Select a word'),
+    (
+      'Find meaning',
+      'Search the selected text in a panel; swipe it down to close',
+    ),
+    ('Pinch, − / +', 'Zoom in / out'),
+    ('Back', 'Closes the panel, contents or selection, then leaves'),
+  ];
   const rows = <(String, String)>[
     ('Ctrl+O', 'Open a PDF'),
     ('Ctrl+E', 'Find meaning of the selected text'),
@@ -139,29 +181,57 @@ Future<void> showShortcutsDialog(BuildContext context) {
   return showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Keyboard shortcuts'),
+      title: Text(touch ? 'Gestures and shortcuts' : 'Keyboard shortcuts'),
       content: SizedBox(
         width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (keys, what) in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 150,
-                      child: Text(
-                        keys,
-                        style: Theme.of(context).textTheme.labelLarge,
-                      ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (touch) ...[
+                for (final (keys, what) in gestures)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 110,
+                          child: Text(
+                            keys,
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                        ),
+                        Expanded(child: Text(what)),
+                      ],
                     ),
-                    Expanded(child: Text(what)),
-                  ],
+                  ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 4),
+                  child: Text(
+                    'With a keyboard attached',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
                 ),
-              ),
-          ],
+              ],
+              for (final (keys, what) in rows)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 150,
+                        child: Text(
+                          keys,
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                      ),
+                      Expanded(child: Text(what)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
       actions: [

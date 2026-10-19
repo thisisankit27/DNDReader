@@ -7,6 +7,7 @@ import 'package:pdfrx/pdfrx.dart';
 
 import '../../dev/dev_harness.dart';
 import '../../dev/selection_debug.dart';
+import '../../services/document_access.dart';
 import '../../services/pdf_picker.dart';
 import '../../services/window_service.dart';
 import 'document_scrollbars.dart';
@@ -18,14 +19,18 @@ import 'reader_header.dart';
 import 'reader_menu.dart';
 import '../../build_info.dart';
 import '../../services/settings_service.dart';
+import 'back_scope.dart';
 import 'selection_action_controller.dart';
 import 'selection_anchor.dart';
 import 'selection_pill.dart';
 import '../search/embedded_browser_info.dart';
 import '../search/search_panel.dart';
+import '../search/search_presentation.dart';
+import '../search/search_sheet.dart';
 import '../search/search_session.dart';
 import '../../services/path_names.dart';
 import '../../services/search_url.dart';
+import '../../services/system_bars.dart';
 
 /// The single screen: header on top, reading surface below.
 class ReaderScreen extends StatefulWidget {
@@ -36,6 +41,8 @@ class ReaderScreen extends StatefulWidget {
     this.actionController,
     this.searchSession,
     this.settings,
+    this.documents,
+    this.searchPresentation = SearchPresentation.sidePanel,
   });
 
   /// A document to open at start-up (command-line argument / "Open With").
@@ -56,11 +63,17 @@ class ReaderScreen extends StatefulWidget {
   /// Persisted preferences; an in-memory service when null (tests).
   final SettingsService? settings;
 
+  /// Where documents come from where they are not plain files (Android); null on desktop.
+  final DocumentAccess? documents;
+
+  /// Side panel (desktop) or, on phone-width windows, a bottom sheet (Android).
+  final SearchPresentation searchPresentation;
+
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
 }
 
-class _ReaderScreenState extends State<ReaderScreen> {
+class _ReaderScreenState extends State<ReaderScreen> with RestorationMixin {
   String? _path;
 
   /// Bumped on every open. The viewer is keyed on it, so opening the same file
@@ -96,6 +109,27 @@ class _ReaderScreenState extends State<ReaderScreen> {
   /// Closing the panel or finishing an edit returns focus here.
   final FocusNode _readerFocus = FocusNode(debugLabel: 'reader');
 
+  StreamSubscription<DocumentEvent>? _documentsSub;
+
+  /// Touch-first mobile layout (Android): phone header, no keyboard hints, system back, keep-awake.
+  bool get _mobile => widget.searchPresentation.touch;
+
+  /// The system back gesture/button: dismisses one layer at a time, then lets the system leave.
+  late final BackScope _back = BackScope(onBack: _onBack);
+  final MenuController _menu = MenuController();
+  bool _menuOpen = false;
+  bool? _keepAwake;
+
+  // Process death: the panel's query and state are restored by the framework (not on a normal launch).
+  // The document, page and zoom come back from the saved settings.
+  final RestorableBool _restorePanelOpen = RestorableBool(false);
+  final RestorableString _restoreQuery = RestorableString('');
+  final RestorableDouble _restoreSheet = RestorableDouble(
+    SearchSheet.snapFractions.first,
+  );
+
+  /// Resting height of the search sheet, as a fraction of the reading area.
+  double _sheetFraction = SearchSheet.snapFractions.first;
   int? _initialPage;
   Timer? _persistTimer;
   double? _persistedZoom;
@@ -105,6 +139,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     super.initState();
     _search.addListener(_onSearchChanged);
     _window.addListener(_onWindowChanged);
+    _action.addListener(_syncBack);
     final initial = widget.initialPath;
     if (initial != null) {
       _path = initial;
@@ -123,10 +158,34 @@ class _ReaderScreenState extends State<ReaderScreen> {
       _trackDocument(_path!);
     }
     _controller.addListener(_onViewerTransform);
+    _documentsSub = widget.documents?.incoming.listen(_onIncomingDocument);
+  }
+
+  /// A document that arrived while running (a second intent), or one that failed to import.
+  void _onIncomingDocument(DocumentEvent event) {
+    if (!mounted) return;
+    final path = event.path;
+    if (path != null) {
+      _openPath(path);
+    } else {
+      _showNotice(event.error ?? 'Couldn’t open that file.');
+    }
+  }
+
+  void _showNotice(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _trackDocument(String path) {
     _settings.addRecent(path);
+    // Stored copies nothing refers to any more are removed (Android only).
+    final last = _settings.settings.lastDocument;
+    unawaited(
+      widget.documents?.prune([..._settings.settings.recents, path, ?last]) ??
+          Future<void>.value(),
+    );
   }
 
   /// Debounced persistence of page and zoom.
@@ -158,10 +217,82 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
+  @override
+  String? get restorationId => 'reader';
+
+  @override
+  void restoreState(RestorationBucket? oldBucket, bool initialRestore) {
+    registerForRestoration(_restorePanelOpen, 'panelOpen');
+    registerForRestoration(_restoreQuery, 'query');
+    registerForRestoration(_restoreSheet, 'sheet');
+    _sheetFraction = _restoreSheet.value;
+    final query = _restoreQuery.value;
+    if (_restorePanelOpen.value && query.isNotEmpty) {
+      final uri = searchUriFor(query);
+      if (uri != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_search.search(uri, query));
+        });
+      }
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _back.attach(context);
+    if (_mobile) SystemBars.apply(Theme.of(context).brightness);
+  }
+
+  bool get _selectionHeld =>
+      _action.available || (_selection?.hasSelectedText ?? false);
+
+  /// Whether the system back has something to dismiss (otherwise it leaves the app).
+  bool get _hasBackWork =>
+      _menuOpen ||
+      _search.visible ||
+      _outlineVisible ||
+      _selectionHeld ||
+      _window.fullscreen;
+
+  void _syncBack() => _back.setBusy(_mobile && _hasBackWork);
+
+  /// System back, one layer at a time: the menu, then the search sheet (its own history first), then the
+  /// contents, then the selection, then full screen; with nothing left the system leaves the app.
+  void _onBack() {
+    if (_menuOpen) {
+      _menu.close();
+      return;
+    }
+    if (_search.visible) {
+      if (_search.canGoBack) {
+        unawaited(_search.back());
+      } else {
+        _search.close();
+      }
+      return;
+    }
+    if (_outlineVisible) {
+      setState(() => _outlineVisible = false);
+      return;
+    }
+    if (_selectionHeld) {
+      _action.dismiss();
+      if (_controller.isReady) {
+        _controller.textSelectionDelegate.clearTextSelection();
+      }
+      return;
+    }
+    if (_window.fullscreen) unawaited(_window.setFullscreen(false));
+  }
+
   bool _searchWasVisible = false;
 
   void _onSearchChanged() {
     final visible = _search.visible;
+    _restorePanelOpen.value = visible;
+    if (visible) _restoreQuery.value = _search.queryText;
+    _syncBack();
     if (_searchWasVisible && !visible) {
       // The native webview may still hold OS focus while hidden.
       unawaited(_search.webView?.releaseFocus() ?? Future<void>.value());
@@ -229,10 +360,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
   void dispose() {
     _search.removeListener(_onSearchChanged);
     _window.removeListener(_onWindowChanged);
+    _action.removeListener(_syncBack);
+    _back.dispose();
+    _restorePanelOpen.dispose();
+    _restoreQuery.dispose();
+    _restoreSheet.dispose();
     _window.dispose();
     _contextMenuOpen.dispose();
     _readerFocus.dispose();
     _persistTimer?.cancel();
+    unawaited(_documentsSub?.cancel());
     _controller.removeListener(_onViewerTransform);
     if (widget.actionController == null) _action.dispose();
     if (widget.searchSession == null) _search.dispose();
@@ -249,7 +386,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
   int? get _headerPageCount => _path == null || _failed ? null : _pageCount;
 
   Future<void> _openPicker() async {
-    final picked = await widget.pickPdf();
+    final String? picked;
+    try {
+      picked = await (widget.documents?.pick ?? widget.pickPdf)();
+    } on DocumentImportException catch (e) {
+      if (mounted) _showNotice(e.message);
+      return;
+    }
     if (picked == null || !mounted) return;
     _openPath(picked);
   }
@@ -376,6 +519,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   Widget build(BuildContext context) {
     final hasDocument = _path != null && !_failed;
+    if (_mobile) {
+      // Keep the screen on while a document is open, and tell the system back what it may take.
+      if (_keepAwake != hasDocument) {
+        _keepAwake = hasDocument;
+        unawaited(_window.setKeepScreenOn(hasDocument));
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncBack();
+      });
+    }
 
     Widget bodyFor(EdgeInsets insets) {
       if (_path == null) {
@@ -393,6 +546,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
           key: ValueKey('$_path#$_openSerial'),
           contentInsets: insets,
           contextMenuOpen: _contextMenuOpen,
+          touch: _mobile,
           onFindMeaning: () => unawaited(_findMeaningNow()),
           documentRef: _documentRef!,
           controller: _controller,
@@ -456,6 +610,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
         child: Scaffold(
           body: Column(
             children: [
+              // Keeps the header clear of a status bar / cutout the system draws over the app
+              // (edge-to-edge on Android). Zero on desktop, where nothing is drawn over the window.
+              SizedBox(height: MediaQuery.paddingOf(context).top),
+              if (widget.documents != null)
+                ValueListenableBuilder<bool>(
+                  valueListenable: widget.documents!.importing,
+                  builder: (context, importing, _) => SizedBox(
+                    height: 2,
+                    child: importing ? const LinearProgressIndicator() : null,
+                  ),
+                ),
               ReaderHeader(
                 title: _title,
                 pageNumber: _pageNumber,
@@ -474,6 +639,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     : null,
                 onToggleContents: _toggleOutline,
                 contentsOpen: _outlineVisible,
+                phone: _mobile,
                 menu: ListenableBuilder(
                   listenable: _settings,
                   builder: (context, _) => ReaderMenu(
@@ -483,7 +649,24 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     onSelectionHighlight: _settings.setSelectionHighlight,
                     recents: _settings.settings.recents,
                     onOpenRecent: _openPath,
-                    onShowShortcuts: () => showShortcutsDialog(context),
+                    onShowShortcuts: () =>
+                        showShortcutsDialog(context, touch: _mobile),
+                    touch: _mobile,
+                    onRotate: _mobile && hasDocument && _controller.isReady
+                        ? _rotate
+                        : null,
+                    onFitPage: _mobile && hasDocument && _controller.isReady
+                        ? _fitPage
+                        : null,
+                    onToggleFullscreen: _mobile
+                        ? _window.toggleFullscreen
+                        : null,
+                    fullscreen: _window.fullscreen,
+                    controller: _menu,
+                    onOpenChanged: (open) {
+                      _menuOpen = open;
+                      _syncBack();
+                    },
                     onShowAbout: _showAbout,
                   ),
                 ),
@@ -507,12 +690,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           final leftInset = hasDocument && _outlineVisible
                               ? OutlinePanel.width.clamp(0.0, maxWidth * 0.8)
                               : 0.0;
-                          final rightInset = _search.visible
+                          final sheet = widget.searchPresentation.usesSheet(
+                            maxWidth,
+                          );
+                          final rightInset = _search.visible && !sheet
                               ? SearchPanel.widthFor(maxWidth)
+                              : 0.0;
+                          // The sheet covers the bottom of the page; its height becomes scrollable
+                          // room so the selected text can be panned clear of it.
+                          final bottomInset = _search.visible && sheet
+                              ? constraints.maxHeight * _sheetFraction
                               : 0.0;
                           final insets = EdgeInsets.only(
                             left: leftInset,
                             right: rightInset,
+                            bottom: bottomInset,
                           );
                           _syncInsets(insets);
                           return Stack(
@@ -543,6 +735,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                         onPressed: _findMeaning,
                                         onScrollSignal: _controller
                                             .handlePointerSignalEvent,
+                                        touch: _mobile,
                                       );
                                     },
                                   ),
@@ -570,8 +763,30 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                     onClose: _toggleOutline,
                                   ),
                                 ),
+                              // Phone-width windows: a draggable bottom sheet instead.
+                              if (sheet &&
+                                  (_search.webView != null || _search.visible))
+                                Positioned.fill(
+                                  child: Offstage(
+                                    offstage: !_search.visible,
+                                    child: ExcludeFocus(
+                                      excluding: !_search.visible,
+                                      child: SearchSheet(
+                                        session: _search,
+                                        onClose: _search.close,
+                                        availableHeight: constraints.maxHeight,
+                                        fraction: _sheetFraction,
+                                        onSettled: (fraction) => setState(() {
+                                          _sheetFraction = fraction;
+                                          _restoreSheet.value = fraction;
+                                        }),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               // No browser exists until the first search.
-                              if (_search.webView != null || _search.visible)
+                              if (!sheet &&
+                                  (_search.webView != null || _search.visible))
                                 Positioned(
                                   right: 0,
                                   top: 0,
@@ -600,6 +815,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   ),
                 ),
               ),
+              // Keeps the reading area clear of a navigation bar drawn over the app (edge-to-edge on
+              // Android). Zero on desktop.
+              SizedBox(height: MediaQuery.paddingOf(context).bottom),
             ],
           ),
         ),

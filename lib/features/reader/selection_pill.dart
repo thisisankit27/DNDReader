@@ -16,6 +16,7 @@ class SelectionPill extends StatelessWidget {
     required this.repaint,
     required this.onPressed,
     this.onScrollSignal,
+    this.touch = false,
   });
 
   /// Current on-screen anchors, or null when the selection is not on screen.
@@ -30,6 +31,13 @@ class SelectionPill extends StatelessWidget {
   /// (the reader passes the viewer's own handler) so the document keeps
   /// scrolling while the cursor happens to rest on the pill.
   final void Function(PointerSignalEvent event)? onScrollSignal;
+
+  /// Touch layout: no Ctrl+E hint, a 48 dp target, and a gap below the selection wide enough to clear its
+  /// drag handles (which hang below the last character), so the pill never covers or intercepts them.
+  final bool touch;
+
+  /// Space between the selection and the pill on touch: taller than the selection handles.
+  static const double touchGap = 34;
 
   /// Test hook and dev-harness handle.
   static final GlobalKey pillKey = GlobalKey(debugLabel: 'selection-pill');
@@ -52,10 +60,18 @@ class SelectionPill extends StatelessWidget {
                 : (a.start.overlaps(view) ? a.start : null);
             if (anchor == null) return const SizedBox.shrink();
             return CustomSingleChildLayout(
-              delegate: _PillLayoutDelegate(anchor: anchor, avoid: a.bounds),
+              delegate: _PillLayoutDelegate(
+                anchor: anchor,
+                avoid: a.bounds,
+                gap: touch ? touchGap : 8,
+              ),
               child: Listener(
                 onPointerSignal: onScrollSignal,
-                child: _PillBody(key: pillKey, onPressed: onPressed),
+                child: _PillBody(
+                  key: pillKey,
+                  onPressed: onPressed,
+                  touch: touch,
+                ),
               ),
             );
           },
@@ -66,10 +82,15 @@ class SelectionPill extends StatelessWidget {
 }
 
 class _PillLayoutDelegate extends SingleChildLayoutDelegate {
-  _PillLayoutDelegate({required this.anchor, required this.avoid});
+  _PillLayoutDelegate({
+    required this.anchor,
+    required this.avoid,
+    this.gap = 8,
+  });
 
   final Rect anchor;
   final Rect avoid;
+  final double gap;
 
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
@@ -82,18 +103,20 @@ class _PillLayoutDelegate extends SingleChildLayoutDelegate {
       pill: childSize,
       anchor: anchor,
       avoid: avoid,
+      gap: gap,
     ).offset;
   }
 
   @override
   bool shouldRelayout(_PillLayoutDelegate old) =>
-      old.anchor != anchor || old.avoid != avoid;
+      old.anchor != anchor || old.avoid != avoid || old.gap != gap;
 }
 
 class _PillBody extends StatelessWidget {
-  const _PillBody({super.key, required this.onPressed});
+  const _PillBody({super.key, required this.onPressed, this.touch = false});
 
   final VoidCallback onPressed;
+  final bool touch;
 
   @override
   Widget build(BuildContext context) {
@@ -101,6 +124,8 @@ class _PillBody extends StatelessWidget {
     return Semantics(
       button: true,
       label: 'Find meaning of the selected text',
+      // The visible words would be read again after the label (TalkBack: two announcements).
+      excludeSemantics: touch,
       child: Material(
         elevation: 4,
         shadowColor: Colors.black54,
@@ -110,7 +135,7 @@ class _PillBody extends StatelessWidget {
           customBorder: const StadiumBorder(),
           onTap: onPressed,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 44),
+            constraints: BoxConstraints(minHeight: touch ? 48 : 44),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
@@ -128,15 +153,17 @@ class _PillBody extends StatelessWidget {
                       color: theme.colorScheme.onPrimaryContainer,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Ctrl+E',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onPrimaryContainer.withValues(
-                        alpha: 0.7,
+                  if (!touch) ...[
+                    const SizedBox(width: 10),
+                    Text(
+                      'Ctrl+E',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onPrimaryContainer.withValues(
+                          alpha: 0.7,
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

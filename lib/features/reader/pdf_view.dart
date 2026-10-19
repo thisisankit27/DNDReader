@@ -21,6 +21,7 @@ class PdfView extends StatelessWidget {
     this.contentInsets = EdgeInsets.zero,
     this.contextMenuOpen,
     this.onFindMeaning,
+    this.touch = false,
   });
 
   /// Mouse-wheel scroll multiplier, per platform, aiming at ~100 px per notch
@@ -69,6 +70,9 @@ class PdfView extends StatelessWidget {
   /// Offered in the right-click menu whenever text is selected (not only once
   /// the pill has appeared, which waits for the selection to settle).
   final VoidCallback? onFindMeaning;
+
+  /// Touch layout: the context menu shows no keyboard-shortcut hints.
+  final bool touch;
 
   @override
   Widget build(BuildContext context) {
@@ -131,17 +135,17 @@ class PdfView extends StatelessWidget {
       if (params.isTextSelectionEnabled &&
           delegate.isCopyAllowed &&
           delegate.hasSelectedText)
-        _MenuEntry('Copy', 'Ctrl+C', () {
+        _MenuEntry('Copy', touch ? '' : 'Ctrl+C', () {
           delegate.copyTextSelection();
           params.dismissContextMenu();
         }),
       if (delegate.hasSelectedText && onFindMeaning != null)
-        _MenuEntry('Find meaning', 'Ctrl+E', () {
+        _MenuEntry('Find meaning', touch ? '' : 'Ctrl+E', () {
           params.dismissContextMenu();
           onFindMeaning?.call();
         }),
       if (params.isTextSelectionEnabled && !delegate.isSelectingAllText)
-        _MenuEntry('Select all', 'Ctrl+A', () {
+        _MenuEntry('Select all', touch ? '' : 'Ctrl+A', () {
           delegate.selectAllText();
           params.dismissContextMenu();
         }),
@@ -149,7 +153,7 @@ class PdfView extends StatelessWidget {
     if (entries.isEmpty) return null;
     return _MenuPresence(
       open: contextMenuOpen,
-      child: _ContextMenu(entries: entries),
+      child: _ContextMenu(entries: entries, touch: touch),
     );
   }
 }
@@ -166,12 +170,14 @@ class _MenuEntry {
 /// it inside the viewer (it measures the widget), so this only draws it. Drawn
 /// here, not by pdfrx's adaptive toolbar, so it is legible in both themes.
 class _ContextMenu extends StatelessWidget {
-  const _ContextMenu({required this.entries});
+  const _ContextMenu({required this.entries, this.touch = false});
 
   static const double _width = 220;
-  static const double _rowHeight = 40;
 
   final List<_MenuEntry> entries;
+
+  /// Touch rows are 48 dp tall (a finger target), desktop rows 40.
+  final bool touch;
 
   @override
   Widget build(BuildContext context) {
@@ -193,7 +199,7 @@ class _ContextMenu extends StatelessWidget {
                 InkWell(
                   onTap: e.onPressed,
                   child: SizedBox(
-                    height: _rowHeight,
+                    height: touch ? 48 : 40,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
@@ -204,12 +210,13 @@ class _ContextMenu extends StatelessWidget {
                               style: theme.textTheme.bodyMedium,
                             ),
                           ),
-                          Text(
-                            e.hint,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
+                          if (e.hint.isNotEmpty)
+                            Text(
+                              e.hint,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),

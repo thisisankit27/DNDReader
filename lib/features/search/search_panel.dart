@@ -9,17 +9,32 @@ import 'search_web_view.dart';
 /// the embedded browser, with calm states for loading, failure and "the sandbox
 /// cannot start here".
 class SearchPanel extends StatelessWidget {
-  const SearchPanel({super.key, required this.session, required this.onClose});
+  const SearchPanel({
+    super.key,
+    required this.session,
+    required this.onClose,
+    this.touch = false,
+  });
 
   final SearchSession session;
   final VoidCallback onClose;
+
+  /// Touch layout: no keyboard-shortcut text in labels (a screen reader reads them aloud).
+  final bool touch;
 
   /// The explanation under "Search can't run inside DNDReader here".
   ///
   /// Platform-specific because the reason differs: the Linux browser sandbox
   /// versus the Windows WebView2 Runtime (plan W2).
   @visibleForTesting
-  static String unavailableBody({required bool windows}) => windows
+  static String unavailableBody({
+    required bool windows,
+    bool android = false,
+  }) => android
+      ? 'The Android System WebView that shows search results is missing, disabled or '
+            'can’t start on this device, so results are not loaded in the panel. You can '
+            'open them in your browser instead.'
+      : windows
       ? 'The Microsoft Edge WebView2 Runtime that shows search results isn’t available '
             'on this system, so results are not loaded in the panel. You can open them in '
             'your browser instead.'
@@ -28,7 +43,12 @@ class SearchPanel extends StatelessWidget {
 
   /// The note shown when Google asks for a cookie choice.
   @visibleForTesting
-  static String consentNote({required bool windows}) => windows
+  static String consentNote({required bool windows, bool android = false}) =>
+      android
+      ? 'Google is asking for a cookie choice. It applies until DNDReader is closed and '
+            'reopened — search data is kept in the app’s private storage and cleared '
+            'the next time the app starts.'
+      : windows
       ? 'Google is asking for a cookie choice. It applies until you quit DNDReader — '
             'search data is kept in a temporary folder that is deleted when you quit.'
       : 'Google is asking for a cookie choice. It applies until you quit DNDReader — '
@@ -57,7 +77,7 @@ class SearchPanel extends StatelessWidget {
             ),
             child: Column(
               children: [
-                _Header(session: session, onClose: onClose),
+                _Header(session: session, onClose: onClose, touch: touch),
                 if (unsandboxedDevOverrideActive) const _UnsandboxedBanner(),
                 if (session.consentHint) const _ConsentHint(),
                 Expanded(child: _Body(session: session)),
@@ -71,10 +91,15 @@ class SearchPanel extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.session, required this.onClose});
+  const _Header({
+    required this.session,
+    required this.onClose,
+    this.touch = false,
+  });
 
   final SearchSession session;
   final VoidCallback onClose;
+  final bool touch;
 
   @override
   Widget build(BuildContext context) {
@@ -117,7 +142,7 @@ class _Header extends StatelessWidget {
                     onPressed: session.openInBrowser,
                   ),
                   IconButton(
-                    tooltip: 'Close (Esc)',
+                    tooltip: touch ? 'Close' : 'Close (Esc)',
                     icon: const Icon(Icons.close),
                     onPressed: onClose,
                   ),
@@ -149,7 +174,10 @@ class _Body extends StatelessWidget {
         return _Message(
           icon: Icons.shield_outlined,
           title: 'Search can’t run inside DNDReader here',
-          body: SearchPanel.unavailableBody(windows: Platform.isWindows),
+          body: SearchPanel.unavailableBody(
+            windows: Platform.isWindows,
+            android: Platform.isAndroid,
+          ),
           detail: session.unavailableReason,
           actionLabel: 'Open in browser',
           onAction: session.openInBrowser,
@@ -264,7 +292,10 @@ class _ConsentHint extends StatelessWidget {
       color: theme.colorScheme.secondaryContainer,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Text(
-        SearchPanel.consentNote(windows: Platform.isWindows),
+        SearchPanel.consentNote(
+          windows: Platform.isWindows,
+          android: Platform.isAndroid,
+        ),
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSecondaryContainer,
         ),

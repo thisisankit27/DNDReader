@@ -95,6 +95,36 @@ class _DevHarnessState extends State<DevHarness> {
     }
   }
 
+  /// Frame statistics (milliseconds) for the benchmark commands. `janky*` counts frames over one 60 Hz
+  /// frame (16.7 ms); the budget on a 120 Hz phone is stated against these, not against 8.3 ms.
+  Map<String, Object> _frameStats(List<FrameTiming> timings, int wallMs) {
+    double ms(Duration d) => d.inMicroseconds / 1000.0;
+    final total = timings.map((t) => ms(t.totalSpan)).toList()..sort();
+    final build = timings.map((t) => ms(t.buildDuration)).toList();
+    final raster = timings.map((t) => ms(t.rasterDuration)).toList();
+    double avg(List<double> l) =>
+        l.isEmpty ? 0 : l.reduce((p, e) => p + e) / l.length;
+    double pct(List<double> l, double p) =>
+        l.isEmpty ? 0 : l[((l.length - 1) * p).round()];
+    String f(double v) => v.toStringAsFixed(2);
+    final janky = total.where((v) => v > 16.7).length;
+    return {
+      'wallMs': wallMs,
+      'frames': timings.length,
+      'framesPerSec': (timings.length * 1000 / math.max(1, wallMs))
+          .toStringAsFixed(1),
+      'buildAvgMs': f(avg(build)),
+      'rasterAvgMs': f(avg(raster)),
+      'totalP50Ms': f(pct(total, 0.5)),
+      'totalP90Ms': f(pct(total, 0.9)),
+      'totalP95Ms': f(pct(total, 0.95)),
+      'totalP99Ms': f(pct(total, 0.99)),
+      'totalMaxMs': f(total.isEmpty ? 0 : total.last),
+      'jankyFrames': janky,
+      'jankyPct': f(total.isEmpty ? 0 : janky * 100 / total.length),
+    };
+  }
+
   PdfViewerController _need() {
     final c = widget.controller;
     if (c == null || !c.isReady) throw StateError('no document ready');
@@ -593,17 +623,19 @@ class _DevHarnessState extends State<DevHarness> {
         await Future<void>.delayed(const Duration(milliseconds: 400));
         sw.stop();
         SchedulerBinding.instance.removeTimingsCallback(collect);
-        double ms(Duration d) => d.inMicroseconds / 1000.0;
-        final total = timings.map((t) => ms(t.totalSpan)).toList()..sort();
-        final build = timings.map((t) => ms(t.buildDuration)).toList();
-        final raster = timings.map((t) => ms(t.rasterDuration)).toList();
-        double avg(List<double> l) =>
-            l.isEmpty ? 0 : l.reduce((p, e) => p + e) / l.length;
-        double pct(List<double> l, double p) =>
-            l.isEmpty ? 0 : l[((l.length - 1) * p).round()];
-        String f(double v) => v.toStringAsFixed(2);
         _log(
-          '  BENCH ${json.encode({'wallMs': sw.elapsedMilliseconds, 'frames': timings.length, 'framesPerSec': (timings.length * 1000 / sw.elapsedMilliseconds).toStringAsFixed(1), 'buildAvgMs': f(avg(build)), 'rasterAvgMs': f(avg(raster)), 'totalP50Ms': f(pct(total, 0.5)), 'totalP90Ms': f(pct(total, 0.9)), 'totalMaxMs': f(total.isEmpty ? 0 : total.last)})}',
+          '  BENCH ${json.encode(_frameStats(timings, sw.elapsedMilliseconds))}',
+        );
+      case 'frames': // frames <ms> — Flutter frame timings while something else (e.g. adb swipes) drives the UI
+        final timings = <FrameTiming>[];
+        void collect(List<FrameTiming> t) => timings.addAll(t);
+        SchedulerBinding.instance.addTimingsCallback(collect);
+        final sw = Stopwatch()..start();
+        await Future<void>.delayed(Duration(milliseconds: int.parse(a[1])));
+        sw.stop();
+        SchedulerBinding.instance.removeTimingsCallback(collect);
+        _log(
+          '  FRAMES ${json.encode(_frameStats(timings, sw.elapsedMilliseconds))}',
         );
       case 'viewport':
         final c = _need();

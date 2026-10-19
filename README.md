@@ -26,7 +26,7 @@ not been rebuilt or re-verified as part of this fix. The Ubuntu build is verifie
 |---|---|
 | Ubuntu / Linux | **Built and verified** on Ubuntu 26.04 (x86-64) — see the "not verified" list in progress.md |
 | Windows 10 1809+ / 11 (x64) | **Built in CI and hand-verified on one Windows 10 22H2 machine** (150 % display): install, read, select, Find meaning, search panel, full screen, quit and temp-data cleanup, uninstall — after seven defects were found and fixed. **Not verified:** Windows 11 (incl. the capture border), a machine without the WebView2 Runtime, other display scales, per-machine install. The installer is **unsigned** (Windows shows "Unknown publisher"). See [docs/windows-owner-test.md](docs/windows-owner-test.md) and [docs/windows-verification/REPORT.md](docs/windows-verification/REPORT.md) |
-| Android | Architecturally supported — **not built, not tested** |
+| Android 8.0+ (API 26+) | **Built, and hand-verified on one arm64 phone** (Moto G60, Android 12, system WebView 149) plus an x86-64 API 36 emulator for predictive back and edge-to-edge (the armeabi-v7a APK builds but has never been run): open from the picker or "Open with"/"Share", touch selection with handles, Find meaning in a bottom sheet, layered Back, full screen, rotation, restoration after the process was killed. **Not verified:** TalkBack, a Bluetooth keyboard/mouse/stylus, two-finger pinch, split screen, a missing or very old system WebView, Android 13+ on a real phone, a 16 KB-page device. The APK is for sideloading from GitHub Releases (no Play listing yet). See [docs/android-owner-test.md](docs/android-owner-test.md) and the Android sections of [docs/progress.md](docs/progress.md) |
 | iOS, macOS | Architecturally supported — **not built, not tested** |
 
 The architecture is a single Flutter codebase intended to reach other platforms. Nothing in this
@@ -43,6 +43,11 @@ row says exactly how far that port has been taken.
 - Remembers theme, zoom, last document and page, recent documents and window size.
 - Selection highlight colour is your choice (Menu → Selection colour): sky blue (default), yellow, orange, pink or grey — chosen from the colour-blind-safe Okabe–Ito palette rather than the theme's default.
 - Light/dark/system theme, keyboard shortcuts (Menu → Keyboard shortcuts).
+- **Android:** the same reader for touch. Long-press a word and drag the handles to select; **Find meaning**
+  raises a draggable bottom sheet (a side panel when the window is wide, e.g. landscape); the system **Back**
+  closes things one layer at a time (menu, panel history, contents, selection, full screen) before it leaves;
+  documents open from the picker, from "Open with" and from "Share" in other apps. Rotate, fit-page and full
+  screen are in the menu on a phone.
 
 ## How it works
 
@@ -52,7 +57,7 @@ row says exactly how far that port has been taken.
 | PDF rendering + text selection | [`pdfrx`](https://pub.dev/packages/pdfrx) (PDFium) |
 | Search panel, Linux | a pinned, security-hardened fork of [`webview_cef`](https://pub.dev/packages/webview_cef) (CEF) — [`thisisankit27/webview_cef`](https://github.com/thisisankit27/webview_cef) (see its `HARDENING.md`) — docked into the layout |
 | Search panel, Windows | Microsoft's **WebView2** via [`webview_flutter_windows`](https://pub.dev/packages/webview_flutter_windows) **1.3.0** (exact pin), composited as a texture so Flutter widgets paint over it. The Runtime, its sandbox and its security updates are Microsoft's. The CEF fork is not built or shipped on Windows |
-| Search panel, mobile | [`webview_flutter`](https://pub.dev/packages/webview_flutter) |
+| Search panel, Android | [`webview_flutter`](https://pub.dev/packages/webview_flutter) using the phone's own **system WebView**. Nothing browser-sized is bundled (the APK is ~25 MB, ~11.5 MB to download) and **CEF is not used on Android**. The WebView is Android's: it is updated and patched by Android/Play, not by this project. iOS would reuse the same adapter |
 | Preferences | `shared_preferences` |
 
 The search panel is an ordinary embedded webview. The selected text is percent-encoded into a
@@ -90,6 +95,21 @@ bash packaging/windows/build-installer.sh   # Git Bash; → dist\DNDReader-<ver>
 The installer is per-user by default (no admin prompt), offers DNDReader under "Open with" for
 `.pdf`, and is not code-signed — Windows SmartScreen may warn. CI uploads the installer as an
 artifact of each run.
+
+## Prerequisites and build (Android)
+
+Flutter **3.47.7**, the Android SDK (platform 36; Gradle fetches the NDK it needs), and a JDK 17+ (Android Studio's
+bundled JDK 25 was used and works). `minSdk` is 26; the target is API 36.
+
+```bash
+flutter pub get
+flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols
+# → build/app/outputs/flutter-apk/app-arm64-v8a-release.apk (about 25 MB)
+```
+
+An unsigned-by-you build is signed with the debug key and is only good for trying the app. A release APK is signed
+with a keystore that is **never committed**: see [docs/android-release.md](docs/android-release.md). The first build
+downloads PDFium from GitHub (via `pdfrx`).
 
 ## Run and build (Linux)
 
@@ -141,7 +161,9 @@ same fail-closed reason.
 - **Your PDF is never uploaded.** It is opened and rendered locally. Nothing beyond the selected
   text is transmitted.
 - **No telemetry, no analytics, no crash reporting.** There is no server component.
-- Only your preferences and the paths of recently opened documents are stored locally.
+- Only your preferences and the paths of recently opened documents are stored locally. **On Android** the app also keeps
+  a private copy of each document you open (up to your eight most recent plus the open one) inside its own storage;
+  see "Known limitations".
 
 Loading Google Search in the panel involves Google's own cookies, exactly as it would in a browser.
 What happens to them **differs by platform**:
@@ -152,6 +174,12 @@ What happens to them **differs by platform**:
   quit**. The guarantee is therefore *discarded when you quit*, **not** *never written to disk*: during a
   session the data is on disk, and a crash can leave a folder behind until the next launch removes it
   (it only ever removes folders named `dndreader-search-<digits>` directly under the temp directory).
+
+- **Android:** the system WebView has no in-memory mode, so the panel's cookies, cache and storage live in the app's
+  private storage (which other apps cannot read) **during a run**. That folder is **deleted every time the app next
+  starts** (a run that was killed is covered the same way), and the adapter also clears it before the first search.
+  The guarantee is therefore *deleted at the next start*, **not** *never written to disk* and **not** *gone the moment
+  you swipe the app away*. A Google cookie choice lasts until the app is closed and reopened.
 
 ## Known limitations
 
@@ -168,8 +196,8 @@ What happens to them **differs by platform**:
    seccomp filter. **The Windows build is small** (37 MB bundle, ~15 MB installer) because it uses the
    system's WebView2 Runtime; `DNDREADER_GPU` does not apply there.
 6. **Text-based PDFs only.** Scanned pages have no text layer and nothing to select. No OCR.
-7. **Ubuntu is the only platform whose behaviour has been observed in use.** Windows is built and
-   started in CI only (see Status). The other three are untested.
+7. **What has been observed in use is limited to the platforms in the Status table, each as far as that row says**
+   (Ubuntu; one Windows 10 machine; one Android phone plus an emulator). The others are untested.
 8. **An unresolved policy question.** DNDReader performs no scraping, parsing or automation — it
    navigates an embedded webview to a search URL when you click. Whether Google's terms permit
    loading Search inside a third-party application panel is **not something this project has
@@ -202,6 +230,21 @@ What happens to them **differs by platform**:
     extraction**; wrapped-hyphen handling is covered by fixtures, not by arbitrary documents.
 15. **The licence of DNDReader itself has not been chosen yet** (no `LICENSE` file). The bundled
     components' licences ship in `/usr/share/doc/dndreader/`.
+
+16. **Android opens a copy, not the original.** Android does not give apps durable file paths, so each document is
+    copied into the app's private storage when you open it (from the picker, "Open with" or "Share") and read from there.
+    **Edits to the original never appear in the copy**: open or share the file again to refresh it. This differs from
+    Linux and Windows, which read the file where it is. Copies are identified by their contents, so sharing the same
+    file twice does not duplicate it, and copies that leave your recents list are deleted; uninstalling removes them all.
+    Files larger than 1 GB are refused.
+17. **Android memory use is high while the panel's browser is alive**: about 520 MB resident (mostly GPU memory) on the test
+    phone with a 240-page PDF open and the browser hidden after one search, against a stated budget of 300 MB (missed;
+    see docs/progress.md). Reading without searching measured about 250–280 MB.
+18. **Android asks for one permission, `INTERNET`** (to load the search panel; it is an install-time permission with no
+    prompt). There is no storage permission: documents arrive through the system picker or the apps you share from.
+19. **On Android the Google page keeps its colour scheme until it reloads** when you switch the app theme with the panel open, and a
+    result link to a `.pdf` opens in your browser (the system WebView cannot show PDFs). Links such as `tel:`/`mailto:` go
+    to the system; `intent:`, `market:` and similar links are ignored.
 
 ## Not included
 
