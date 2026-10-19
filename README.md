@@ -15,12 +15,20 @@ No AI engine of our own. No API keys. No accounts. No backend.
 
 ## Status
 
-**Version 0.2.2: Ubuntu and Windows. No release has been published.** 0.2.2 is Linux-only: narrows
-0.2.1's GNOME 50 startup-crash workaround to only apply when actually needed, and fixes the AppArmor
-profile's ABI pin (`abi/5.0` → `abi/4.0`) so the sandbox installs on Ubuntu 24.04 and on CI, not just
-on this machine's newer Ubuntu (see progress.md). The Windows build is unchanged from 0.2.0 and has
-not been rebuilt or re-verified as part of this fix. The Ubuntu build is verified on Ubuntu 26.04 only (installed `.deb` and AppArmor profile confirmed by the owner); the Windows build is described below. What has actually been observed — and what has not — is in
-[docs/progress.md](docs/progress.md); the plan is in [docs/implementation-plan.md](docs/implementation-plan.md).
+**Version 0.3.0: Ubuntu, Windows and Android — the first published release.** 0.3.0 adds the
+Android port: touch text selection, a bottom-sheet search panel on the system WebView, and document
+access through the Android picker and `VIEW`/`SEND` intents. One version number covers all three
+platforms, and a test keeps `kAppVersion` and `pubspec.yaml` from drifting apart.
+
+Ubuntu and Windows are unchanged in behaviour by the Android work — the diff touches no file under
+`linux/`, `windows/` or `packaging/`, and both desktop conformance suites report the same results as
+before (Linux 10/10, Windows 11/11). They are rebuilt from this tag, so the binaries are new even
+though the behaviour is not. Verification is per-platform: Ubuntu 26.04 is confirmed by the owner on
+an installed `.deb`; Windows comes from CI; Android is verified on a Moto G60 (Android 12, API 31)
+with an emulator covering API 36. What has *not* been checked on each is listed below and in
+[docs/android-owner-test.md](docs/android-owner-test.md). Everything that has actually been observed
+is recorded in [docs/progress.md](docs/progress.md); the plan is in
+[docs/implementation-plan.md](docs/implementation-plan.md).
 
 | Platform | State |
 |---|---|
@@ -123,7 +131,7 @@ flutter test
 flutter build linux --release
 
 packaging/linux/build-deb.sh          # → dist/dndreader_<ver>-1_amd64.deb
-sudo apt install ./dist/dndreader_0.2.2-1_amd64.deb
+sudo apt install ./dist/dndreader_0.3.0-1_amd64.deb
 ```
 
 The `.deb` is built for the Ubuntu release it is built on (its `Depends` are derived from the
