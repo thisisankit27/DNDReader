@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest an improvement.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        DNDReader is deliberately small. These are out of scope: OCR, DOCX or EPUB, annotation or editing, cloud storage, accounts,
+        sync, a general-purpose browser, and AI of any kind. Please check before suggesting one of them.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem you are trying to solve
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like to happen
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: Which platforms matter to you
+      options:
+        - label: Ubuntu
+        - label: Windows
+        - label: Android

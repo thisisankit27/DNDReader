@@ -1,0 +1,51 @@
+name: Download or install problem
+description: A checksum or signature does not match, Windows or Android blocked the file, or it will not install.
+title: "[Download] "
+labels: ["download"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **If a checksum or signature did not match, do not run or install the file.** Delete it, download it again from the
+        [download page](https://dnd-reader.vibethroughcode.com/download/), and check again. If it still differs, tell us here.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Ubuntu, Windows, Android]
+    validations:
+      required: true
+  - type: input
+    id: file
+    attributes:
+      label: File name
+      placeholder: "DNDReader-0.3.0-arm64-v8a.apk"
+    validations:
+      required: true
+  - type: dropdown
+    id: problem
+    attributes:
+      label: What went wrong
+      options:
+        - The SHA-256 checksum does not match the one on the page
+        - The Android signature fingerprint does not match
+        - The download did not start, or stopped part-way
+        - Windows (SmartScreen) blocked or warned about the installer
+        - Google Play Protect blocked the installation
+        - Android said the app is not installed, or not compatible
+        - The installer or package failed to install
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: got
+    attributes:
+      label: The checksum or fingerprint you got (if it did not match)
+      description: Paste the number you calculated.
+  - type: textarea
+    id: details
+    attributes:
+      label: What you saw
+      description: "The exact message, the browser or app you downloaded with, and your Windows, Ubuntu or Android version."
+    validations:
+      required: true
