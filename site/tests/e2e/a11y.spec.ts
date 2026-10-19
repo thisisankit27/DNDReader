@@ -13,8 +13,9 @@ async function reveal(page: any, path: string) {
     document.querySelectorAll('[data-arch-warn],[data-platform-mismatch],[data-distro-note],[data-suggest-guess]').forEach((e: any) => (e.hidden = false));
   });
   if (path === '') await page.locator('[data-reader-open]').click();
-  const btn = page.locator('a[data-download]').first();
-  if (await btn.count()) await Promise.all([page.waitForEvent('download').catch(() => {}), btn.click()]);
+  // Reveal the "download started" panel. Clicking a real download button is covered in download.spec.ts; WebKit
+  // does not report stubbed downloads, so here the panel is simply shown, which is all axe needs to see.
+  await page.evaluate(() => document.querySelectorAll('[data-started]').forEach((e: any) => { e.hidden = false; }));
 }
 
 test.describe('axe: WCAG 2.2 A and AA, plus best practice', () => {
