@@ -49,9 +49,14 @@ test.describe('responsive layouts', () => {
     const b = await page.locator('[data-reader]').boundingBox();
     expect(b!.y).toBeGreaterThan(a!.y + a!.height);
     await page.locator('[data-reader-open]').click();
+    // The panel slides in (0.22 s). Measure once it has settled, not mid-transition.
+    await expect.poll(async () => {
+      const panel = await page.locator('[data-reader-panel]').boundingBox();
+      const reader = await page.locator('[data-reader]').boundingBox();
+      return Math.abs(panel!.y + panel!.height - (reader!.y + reader!.height));
+    }, { message: 'the panel docks to the bottom of the reader on a phone' }).toBeLessThan(2);
     const panel = await page.locator('[data-reader-panel]').boundingBox();
     const reader = await page.locator('[data-reader]').boundingBox();
-    expect(Math.abs(panel!.y + panel!.height - (reader!.y + reader!.height))).toBeLessThan(2); // docked to the bottom
     expect(panel!.width).toBeGreaterThan(reader!.width - 4);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(s.url());
@@ -59,8 +64,10 @@ test.describe('responsive layouts', () => {
     const r = await page.locator('[data-reader]').boundingBox();
     expect(r!.x).toBeGreaterThan(h!.x + h!.width - 5);
     await page.locator('[data-reader-open]').click();
-    const p2 = await page.locator('[data-reader-panel]').boundingBox();
-    const r2 = await page.locator('[data-reader]').boundingBox();
-    expect(Math.abs(p2!.x + p2!.width - (r2!.x + r2!.width))).toBeLessThan(2); // docked to the right
+    await expect.poll(async () => {
+      const p2 = await page.locator('[data-reader-panel]').boundingBox();
+      const r2 = await page.locator('[data-reader]').boundingBox();
+      return Math.abs(p2!.x + p2!.width - (r2!.x + r2!.width));
+    }, { message: 'the panel docks to the right of the reader on a desktop' }).toBeLessThan(2);
   });
 });

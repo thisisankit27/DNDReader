@@ -1,4 +1,5 @@
 import { test as base, expect } from '@playwright/test';
+import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,14 +62,27 @@ export const UA = {
 
 export const PAGES = ['', 'download/', 'download/ubuntu/', 'download/windows/', 'download/android/', 'how-it-works/'];
 
-/** Stub every GitHub release-asset download so tests never hit the network and the body is tiny. */
-export async function stubDownloads(page: import('@playwright/test').Page) {
-  await page.route('https://github.com/thisisankit27/DNDReader/releases/download/**', (route) => {
-    const name = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop()!);
-    return route.fulfill({
-      status: 200,
-      headers: { 'content-disposition': `attachment; filename=${name}`, 'content-type': 'application/octet-stream' },
-      body: 'stub',
+// A real local HTTP server that answers like GitHub's CDN: 200, Content-Disposition: attachment, a tiny body.
+// Tests redirect the GitHub asset URLs to it (a 302, as GitHub does). A fulfilled-in-the-browser response is
+// not enough: WebKit does not raise a `download` event for it, while a genuine network response does.
+let downloadOrigin: Promise<string> | null = null;
+function startDownloadServer(): Promise<string> {
+  return (downloadOrigin ??= new Promise((resolveOrigin) => {
+    const server = http.createServer((req, res) => {
+      const name = decodeURIComponent((req.url ?? '').split('/').pop() ?? 'file');
+      res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-disposition': `attachment; filename=${name}`, 'content-length': 4, 'access-control-allow-origin': '*' });
+      res.end(req.method === 'HEAD' ? undefined : 'stub');
     });
+    server.unref();
+    server.listen(0, '127.0.0.1', () => resolveOrigin(`http://127.0.0.1:${(server.address() as any).port}`));
+  }));
+}
+
+/** Redirect every GitHub release-asset download to the local attachment server, so no test hits the network. */
+export async function stubDownloads(page: import('@playwright/test').Page) {
+  const origin = await startDownloadServer();
+  await page.route('https://github.com/thisisankit27/DNDReader/releases/download/**', (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').pop()!;
+    return route.fulfill({ status: 302, headers: { location: `${origin}/dl/${name}` } });
   });
 }

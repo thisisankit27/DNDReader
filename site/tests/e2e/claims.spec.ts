@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { test, expect, PAGES } from './fixtures';
 
 // The claims guard. The brief's rules, as tests over everything a visitor can read (visible text, closed
@@ -129,11 +130,12 @@ test.describe('claims guard', () => {
     expect(t).toMatch(/does not fall back to an unsandboxed browser/);
   });
 
-  test('the app is described as open source with no overclaiming of platforms', async ({ page, sites }) => {
+  test('the page source implies no build that does not exist (macOS, iOS), whatever browser reads it', async ({ sites }) => {
     const s = await sites('snap');
-    await page.goto(s.url());
-    const t = await page.evaluate(() => document.body.textContent!.replace(/\s+/g, ' '));
-    expect(t).not.toMatch(/macOS|iOS|iPhone|iPad/); // nothing implies a build that does not exist
-    expect(t).toMatch(/Ubuntu 26\.04/);
+    const src = readFileSync(`${s.dir}/index.html`, 'utf8').replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ');
+    // The static HTML only. (A Mac visitor is told "DNDReader isn't available for macOS yet" by script, which
+    // is the honest thing to say; that is tested in detect.spec.ts.)
+    expect(src).not.toMatch(/macOS|iOS|iPhone|iPad/);
+    expect(src).toMatch(/Ubuntu 26\.04/);
   });
 });

@@ -18,26 +18,27 @@ async function reveal(page: any, path: string) {
 }
 
 test.describe('axe: WCAG 2.2 A and AA, plus best practice', () => {
+  // One test per page, scheme and size: a failure names its page, and no test can outrun its timeout.
   for (const scheme of ['light', 'dark'] as const) {
     for (const [sizeName, size] of Object.entries(SIZES)) {
-      test(`${scheme}, ${sizeName}: no violations on any page, idle or fully revealed`, async ({ browser, sites }) => {
-        test.setTimeout(300_000); // axe over 6 pages x 2 states is slow in Firefox when workers compete
-        const s = await sites('snap');
-        const ctx = await browser.newContext({ viewport: size, colorScheme: scheme, userAgent: UA.windows });
-        const page = await ctx.newPage();
-        await stubDownloads(page);
-        const failures: string[] = [];
-        for (const p of PAGES) {
+      for (const p of PAGES) {
+        test(`${scheme}, ${sizeName}, ${p || 'home'}: no violations, idle or fully revealed`, async ({ browser, sites }) => {
+          test.setTimeout(120_000);
+          const s = await sites('snap');
+          const ctx = await browser.newContext({ viewport: size, colorScheme: scheme, userAgent: UA.windows });
+          const page = await ctx.newPage();
+          await stubDownloads(page);
+          const failures: string[] = [];
           await page.goto(s.url(p));
           for (const state of ['idle', 'revealed']) {
             if (state === 'revealed') await reveal(page, p);
             const r = await new AxeBuilder({ page }).withTags(TAGS).analyze();
-            for (const v of r.violations) failures.push(`[${p || 'home'} ${state}] ${v.id} (${v.impact}): ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
+            for (const v of r.violations) failures.push(`[${state}] ${v.id} (${v.impact}): ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
           }
-        }
-        expect(failures).toEqual([]);
-        await ctx.close();
-      });
+          expect(failures).toEqual([]);
+          await ctx.close();
+        });
+      }
     }
   }
 
