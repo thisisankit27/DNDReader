@@ -236,8 +236,8 @@ What happens to them **differs by platform**:
 13. **Restoring the last position restores the page and zoom**, not the scroll offset within the page.
 14. **Selecting text across a page boundary, or in scanned/odd PDFs, depends on `pdfrx`/PDFium text
     extraction**; wrapped-hyphen handling is covered by fixtures, not by arbitrary documents.
-15. **The licence of DNDReader itself has not been chosen yet** (no `LICENSE` file). The bundled
-    components' licences ship in `/usr/share/doc/dndreader/`.
+15. **DNDReader is licensed under Apache-2.0** (see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)). The
+    bundled components keep their own licences, which ship in `/usr/share/doc/dndreader/`.
 
 16. **Android opens a copy, not the original.** Android does not give apps durable file paths, so each document is
     copied into the app's private storage when you open it (from the picker, "Open with" or "Share") and read from there.
