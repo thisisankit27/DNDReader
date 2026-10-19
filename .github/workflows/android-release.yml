@@ -93,12 +93,35 @@ jobs:
           .github/scripts/android-check-apk.sh \
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "$MAX_APK_BYTES"
 
+      # The release certificate's own SHA-256. Not a secret - it is in every copy of the
+      # app - but pinning it here is what makes this step meaningful: without it the job
+      # only proves an APK is signed by *someone*, not that it carries our key.
       - name: Verify the signatures and write checksums
+        env:
+          EXPECTED_CERT_SHA256: 90b1f89d69ca9f26140aacc9dcb2a8a5bf494397f1bfe199a126027fa717d936
         run: |
-          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          set -euo pipefail
+          apksigner="$(ls "${ANDROID_HOME:?ANDROID_HOME is not set on this runner}"/build-tools/*/apksigner \
+            | sort -V | tail -1)"
+          echo "apksigner: $apksigner"
           cd build/app/outputs/flutter-apk
+          ls -l app-*-release.apk
           for apk in app-*-release.apk; do
-            "$apksigner" verify --print-certs "$apk" | grep -E 'Signer #1 certificate (DN|SHA-256)'
+            echo "--- $apk"
+            # Capture rather than pipe: piping into grep swallowed apksigner's output and left
+            # grep's exit status as the gate, so a failure here printed nothing at all.
+            if ! out="$("$apksigner" verify --print-certs "$apk" 2>&1)"; then
+              echo "::error::apksigner could not verify $apk"
+              printf '%s\n' "$out"
+              exit 1
+            fi
+            printf '%s\n' "$out" | grep -E 'Signer #1 certificate (DN|SHA-256)'
+            if ! printf '%s\n' "$out" \
+              | grep -qi "Signer #1 certificate SHA-256 digest: $EXPECTED_CERT_SHA256"; then
+              echo "::error::$apk is not signed with the expected release key"
+              printf '%s\n' "$out"
+              exit 1
+            fi
           done
           sha256sum app-*-release.apk | tee SHA256SUMS
 
