@@ -2260,3 +2260,25 @@ the workflow header; it does not prove touch, jank or memory.
 compiled out of release builds and change nothing for desktop users.
 
 **Tests:** 233 passing (the M5 count; M6 added no tests of its own besides the APK gate script).
+
+### M7 — Signing and packaging (2026-10-19)
+
+* **Release signing without a secret in the repo.** `android/app/build.gradle.kts` reads `android/key.properties` (gitignored, with `*.jks`/`*.keystore`);
+  with no keystore a release build is signed with the **debug** key and warns, and with `DNDREADER_REQUIRE_RELEASE_SIGNING=1` a missing keystore **fails the
+  build**. **Verified end to end with a throwaway keystore** created in a scratch directory (not in the repo): the arm64 release APK built, `apksigner verify` passed
+  (APK Signature Scheme v2; minSdk 26 needs no v1), installed on the Moto G60 (after uninstalling the debug-signed build, as the signatures differ) and launched
+  (first launch after install `am start -W` TotalTime 1,462 ms). `git status` showed no key material; the test `key.properties` was deleted afterwards. **Not
+  verified:** a build with the owner's real keystore, and `android-release.yml` itself (it needs the four repository secrets, which do not exist yet; without
+  them it stops at its first step by design).
+* **versionCode** is derived from `pubspec.yaml`'s version: `major*1_000_000 + minor*10_000 + patch*100 + build` (0.2.2+1 -> 20201); Flutter adds 1000 x ABI
+  for split APKs. **Verified in the built APK:** arm64 `versionCode='22201'`, `versionName='0.2.2'`. The build fails if patch or build exceeds 99.
+* **Adaptive icon and label:** a vector adaptive icon (a page of text with a magnifier in the selection sky-blue on deep teal) with a monochrome layer for themed
+  icons; the template's PNG launcher icons were removed (minSdk 26 supports adaptive icons everywhere); label "DNDReader". **Not verified:** how it looks in a
+  launcher on the device (the launcher screen shows personal widgets and was not captured); the shape was checked only in a drawing made from the same coordinates.
+* **Size after M7:** 24,854,117 bytes (24.85 MB) signed arm64 APK, **145,883 bytes under the budget** (the icon resources and the process-start cleanup added about
+  14 KB). The gate script passed on it.
+* **Documents:** `docs/android-release.md` (identity, version scheme, keystore creation, local and CI builds, what the gates enforce, what Play would take, marked
+  as recalled and not verified) and `docs/android-owner-test.md` (install, what was verified, what only the owner can check, a smoke test). README gained the Android
+  status row, prerequisites/build, what leaves the device (per platform), and four Android limitations (snapshot copies, memory, the single permission, theme/PDF
+  links).
+* **Rule #1 proof and shared-file justification:** recorded in the pull request body (the last step of this work).
