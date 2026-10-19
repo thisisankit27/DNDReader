@@ -1,0 +1,8 @@
+DNDReader
+Copyright 2026 Ankit Srivastava
+
+This product includes software developed as part of the Flutter, PDFium and
+Chromium Embedded Framework projects, each under its own licence. The licences
+of all bundled third-party components are installed alongside the application
+(see the `licenses` directory in the Windows build and
+/usr/lib/dndreader in the Debian package).
