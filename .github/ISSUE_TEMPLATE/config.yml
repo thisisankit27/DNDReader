@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/thisisankit27/DNDReader/security/advisories/new
+    about: Please do not open a public issue for a security problem. This form is visible only to the maintainer.
+  - name: What DNDReader does and doesn't promise
+    url: https://dnd-reader.vibethroughcode.com/how-it-works/
+    about: AI Overviews not guaranteed, no Google sign-in in the panel, text-based PDFs only, and what stays on your device. Please check before reporting one of these as a bug.
+  - name: Download and install help
+    url: https://dnd-reader.vibethroughcode.com/download/
+    about: Per-platform install steps, warnings explained, and how to check a download.

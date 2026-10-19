@@ -2,6 +2,8 @@
 
 A minimal PDF reader that removes the context switch between reading and looking something up.
 
+**Website and downloads: <https://dnd-reader.vibethroughcode.com/>** · [Contributing](.github/CONTRIBUTING.md) · [Security policy](.github/SECURITY.md) · [Code of conduct](.github/CODE_OF_CONDUCT.md) · [Licence](LICENSE)
+
 Select a word, phrase or passage → a **"Find meaning"** action appears → a side panel opens
 **inside the reader** with Google Search results for that text. Read it, close the panel, carry on
 from exactly where you were.

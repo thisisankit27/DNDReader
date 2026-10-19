@@ -1,0 +1,77 @@
+name: Bug report
+description: Something in DNDReader does not work as described.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please do not include documents, machine names, user names or personal paths.
+        For a security problem, use the private form in the security policy instead of this issue.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Ubuntu, Windows, Android]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: DNDReader version
+      description: "Menu, then About."
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: "Ubuntu release, Windows version, or Android version and phone model."
+      placeholder: "Ubuntu 26.04 / Windows 10 22H2 / Android 12, Moto G60"
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open a PDF\n2. Select a word\n3. ..."
+  - type: dropdown
+    id: pdf
+    attributes:
+      label: The PDF involved
+      options:
+        - Not specific to one PDF
+        - A text-based PDF
+        - A scanned PDF (no selectable text)
+        - Not sure
+  - type: checkboxes
+    id: panel
+    attributes:
+      label: Search panel
+      options:
+        - label: It happens in the search panel (Find meaning)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Anything else, such as error messages or logs
+      render: shell
+  - type: checkboxes
+    id: limitations
+    attributes:
+      label: Known limitations
+      options:
+        - label: I checked that this is not one of the documented limitations (AI Overview not guaranteed, no Google sign-in in the panel, consent screens or CAPTCHAs, text-based PDFs only).
+          required: true
